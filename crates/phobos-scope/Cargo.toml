@@ -1,0 +1,13 @@
+[package]
+name = "phobos-scope"
+description = "Offline analyser for Phobos Scope captures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+phobos-scope-core = { path = "../phobos-scope-core" }
+serde_json.workspace = true
