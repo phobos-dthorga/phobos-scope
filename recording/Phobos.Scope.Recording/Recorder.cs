@@ -226,6 +226,13 @@ public sealed class Recorder
         if (enabled && Now(out var tick)) Finish(tick, key);
         return LastCapture;
     }
+    /// <summary>Stop on an adapter failure and mark the capture's measurements as incomplete-quality evidence.</summary>
+    public CaptureSnapshot? StopAfterDiagnosticFailure()
+    {
+        RequireOwner();
+        if (enabled) Interlocked.Increment(ref rejected);
+        return Stop();
+    }
     private void Finish(long tick, string reason)
     {
         enabled = false;

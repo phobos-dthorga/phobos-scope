@@ -90,6 +90,9 @@ the end boundary to the configured limit. A scope crossing the limit remains
 incomplete. The host must Poll on its update loop; there is no timer thread.
 
 Wrong-thread measurement calls are ignored and counted while recording is active.
+An adapter can call `StopAfterDiagnosticFailure` to stop explicitly with a rejected
+measurement marker; this preserves v1 stop reasons while making failure visible
+in the analyser's capture-quality warnings.
 Start/Stop/registration on the wrong thread are setup errors. Non-LIFO disposal
 stops the capture with `nesting_error`; open scopes become incomplete. Clock
 regression/failure stops with `clock_error`. Stop on an already stopped recorder

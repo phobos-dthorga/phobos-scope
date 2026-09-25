@@ -126,6 +126,9 @@ try
 finally { Directory.Delete(temp, recursive: true); }
 
 var escaped = new Recorder(() => clock, 1_000);
+r.Start(); snapshot = r.StopAfterDiagnosticFailure()!;
+Check(snapshot.RejectedMeasurements == 1 && !r.IsRecording, "Adapter failure stops with a quality warning rather than an apparently complete capture");
+Save("adapter-failure", snapshot);
 var escapedOp = escaped.RegisterOperation("=formula,\"quoted\"\nline", "csv");
 var escapedContext = escaped.RegisterContext("fixture.text", "context");
 escaped.Start(); using (escaped.Measure(escapedOp)) clock++;
