@@ -5,6 +5,7 @@
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <IsPackable>false</IsPackable>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Version>0.1.1</Version>
   </PropertyGroup>
 </Project>

@@ -1,0 +1,33 @@
+name: Bug report
+description: Something does not work as expected.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for helping! Please read SUPPORT.md first. Redact private details from logs; do not upload saves, game files or credentials."
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and environment
+      description: Scope revision, operating system, Rust and .NET versions. Say unknown if unsure.
+    validations:
+      required: true
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Expected and actual behaviour
+      description: What were you trying to do, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include whether this began after updating, reloading or changing configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant diagnostics or screenshots
+      description: Paste only the relevant, redacted log excerpt or CLI output. This is optional.

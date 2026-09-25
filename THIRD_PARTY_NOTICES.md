@@ -3,8 +3,7 @@
 The repository layout and contributor conventions are adapted from
 [Phobos Ostranauts](https://github.com/phobos-dthorga/phobos-ostranauts), by
 Phobos A. D'thorga. No game-derived source, binaries, artwork, saved games or
-upstream navigation adaptations are included. Phobos Scope's project licence
-remains undecided; see [licensing status](docs/licensing.md).
+upstream navigation adaptations are included. Original Phobos Scope work is MIT licensed; see [licensing](docs/licensing.md).
 
 ## Rust dependencies
 

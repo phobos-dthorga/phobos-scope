@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Getting started
+    url: https://github.com/phobos-dthorga/phobos-scope/blob/main/docs/getting-started.md
+    about: Prerequisites and a standalone synthetic walkthrough.
+  - name: Private security report
+    url: https://github.com/phobos-dthorga/phobos-scope/security/advisories/new
+    about: Report vulnerabilities privately; do not disclose secrets in an issue.

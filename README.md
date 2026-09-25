@@ -8,10 +8,39 @@ and Perfetto**. An opt-in Ostranauts adapter now lives in Phobos Framework,
 with Auto Nav and Shipbreaker instrumentation. Ordinary gameplay needs no Rust
 process or analysis application. In-game verification remains owner-run.
 
+## Start here
+
+New to profiling? Begin with the synthetic demo below; no game is required.
+[The walkthrough](docs/getting-started.md) explains each output. For real
+Ostranauts captures, use the [integration guide](docs/ostranauts-integration.md).
+Questions and redacted bug reports are welcome in
+[Issues](https://github.com/phobos-dthorga/phobos-scope/issues/new/choose).
+See [support](SUPPORT.md) and [contributing](CONTRIBUTING.md).
+
+This is experimental source, with no prebuilt release currently published.
+GitHub's source ZIP is not a ready-to-run executable.
+
+```mermaid
+flowchart LR
+    Record["Opt-in C# recorder"] --> Capture["Bounded JSON capture"]
+    Capture --> Analyse["Rust analysis"]
+    Analyse --> HTML["Offline HTML report"]
+    Analyse --> CSV["CSV tables"]
+    Analyse --> Trace["Perfetto trace — detailed mode"]
+```
+
 ## Try it
 
-Install Rust through rustup, the .NET 10 SDK and PowerShell 7. Toolchain versions
-are recorded in `rust-toolchain.toml` and `global.json`.
+Install [Rust through rustup](https://rustup.rs/), the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+and [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell).
+On Windows, follow rustup's prompt for the Visual Studio C++ build tools if needed.
+Toolchain versions are recorded in `rust-toolchain.toml` and `global.json`.
+Clone this repository, open a terminal in its root, then run the demo:
+
+```powershell
+git clone https://github.com/phobos-dthorga/phobos-scope.git
+cd phobos-scope
+```
 
 ```powershell
 pwsh -File scripts/demo.ps1 -Benchmark
@@ -86,9 +115,9 @@ must poll for duration limits and stop at world changes.
 - [Contributor instructions](CONTRIBUTING.md)
 - [Licensing status](docs/licensing.md) and [dependency provenance](THIRD_PARTY_NOTICES.md)
 
-Conventions follow [Phobos Ostranauts](https://github.com/phobos-dthorga/phobos-ostranauts):
-private development, practical working slices, direct checkpoints on `main`,
-separate local artifacts, and owner-run gameplay tests. **The Ostranauts adapter
-is implemented and checked with synthetic captures; gameplay and in-game
-performance remain unverified.** A project licence
-has not yet been selected; dependency licences retain their own terms.
+Original code and documentation are [MIT licensed](LICENSE). Dependencies retain
+their [own terms](THIRD_PARTY_NOTICES.md). Conventions follow
+[Phobos Ostranauts](https://github.com/phobos-dthorga/phobos-ostranauts): practical
+working slices, separate local artifacts and owner-run gameplay tests.
+The Ostranauts adapter is implemented and checked with synthetic captures;
+gameplay and in-game performance remain unverified.

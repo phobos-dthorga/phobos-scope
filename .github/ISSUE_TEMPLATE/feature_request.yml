@@ -1,0 +1,15 @@
+name: Feature suggestion
+description: Suggest a useful recording or analysis workflow or improvement.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User need
+      description: What would this let you do, and why would it help?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Suggested approach and alternatives
+      description: Include existing mods that already help, if known. Research links are welcome.

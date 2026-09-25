@@ -1,0 +1,10 @@
+name: Question or documentation help
+description: Ask a question or tell us where a guide is confusing.
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: How can we help?
+      description: Tell us what you want to do and which guide or step you reached. No coding knowledge required.
+    validations:
+      required: true

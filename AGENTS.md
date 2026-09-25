@@ -3,9 +3,9 @@
 ## Working conventions
 
 - Author: Phobos A. D'thorga (phobosgekko).
-- Keep this repository private. Requested checkpoints use ordinary commits and
-  direct pushes to `main`; no PR workflow unless the owner asks. Never force-push,
-  change visibility or publish packages implicitly.
+- Owner authorized public access on 2026-09-25. This publication checkpoint uses
+  an ordinary direct push to main; community changes follow CONTRIBUTING.md.
+  Never force-push, change other repository visibility or publish packages implicitly.
 - Conventions are adapted from `phobos-dthorga/phobos-ostranauts`. Do not copy its
   gameplay policies, game-derived material or unrelated implementation.
 - Prefer practical working slices, small reusable scripts and meaningful tests.
@@ -15,8 +15,8 @@
 - Do not control the owner's mouse or keyboard. Gameplay and save testing belong
   to the owner. Never describe a build or synthetic workload as an in-game test.
 - Private-key generation, conversion and credential entry remain owner-run.
-- The project licence has not yet been selected. Preserve third-party notices;
-  do not silently import another repository's licence or relicense dependencies.
+- Owner selected MIT for original Scope code/documentation on 2026-09-25.
+  Preserve third-party notices; do not relicense dependencies.
 
 ## Architecture and measurements
 

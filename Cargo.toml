@@ -9,6 +9,7 @@ rust-version = "1.85"
 authors = ["Phobos A. D'thorga"]
 repository = "https://github.com/phobos-dthorga/phobos-scope"
 publish = false
+license = "MIT"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
