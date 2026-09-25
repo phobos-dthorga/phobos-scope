@@ -4,8 +4,9 @@ An opt-in profiling and analysis toolkit for game mods, with lightweight recordi
 adapters, a shared Rust analysis engine, and portable exports for visualization.
 
 The first working slice is **C# recording → JSON capture → Rust analysis → CSV
-and Perfetto**. It runs entirely outside a game for now. Ordinary gameplay will
-not need a Rust process or an analysis application.
+and Perfetto**. An opt-in Ostranauts adapter now lives in Phobos Framework,
+with Auto Nav and Shipbreaker instrumentation. Ordinary gameplay needs no Rust
+process or analysis application. In-game verification remains owner-run.
 
 ## Try it
 
@@ -80,6 +81,7 @@ must poll for duration limits and stop at world changes.
 
 Conventions follow [Phobos Ostranauts](https://github.com/phobos-dthorga/phobos-ostranauts):
 private development, practical working slices, direct checkpoints on `main`,
-separate local artifacts, and owner-run gameplay tests. **Ostranauts integration
-and in-game performance are not yet implemented or verified.** A project licence
+separate local artifacts, and owner-run gameplay tests. **The Ostranauts adapter
+is implemented and checked with synthetic captures; gameplay and in-game
+performance remain unverified.** A project licence
 has not yet been selected; dependency licences retain their own terms.

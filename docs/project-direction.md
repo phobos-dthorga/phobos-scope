@@ -15,9 +15,11 @@ proposal; the README and format document describe the actual implementation.
 
 ## Next useful slice
 
-Integrate the .NET Standard 2.1 recorder through Phobos Framework in the separate
-Ostranauts repository. Start with coarse guidance, routing or observation work,
-then collect comparable owner-run captures. Follow `ostranauts-integration.md`.
+The .NET Standard 2.1 recorder is integrated through Phobos Framework 0.15.0 in
+the separate Ostranauts repository. Coarse guidance, docking, contact, observation,
+routing, processing and panel operations are instrumented. Next, verify the
+loader and lifecycle during owner-run gameplay and collect comparable captures.
+Follow `ostranauts-integration.md`.
 
 Comparison automation, spike ranking, sample-supported percentiles, reusable Calc
 charts and a self-contained HTML report should follow actual capture questions.
