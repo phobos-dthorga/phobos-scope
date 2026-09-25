@@ -11,6 +11,8 @@ measurements from Ostranauts.
 | File | What it contains |
 |---|---|
 | `capture.json` | Original recorder output, retained for reanalysis |
+| `report/report.html` | Self-contained browser report with ranked operations and retained timeline |
+| `comparison/comparison.html` | Deterministic synthetic before/after demonstration |
 | `report/summary.csv` | Complete counts and inclusive timings for completed scopes |
 | `report/time-series.csv` | Sparse per-operation retained-event overlap in time windows |
 | `report/counters.csv` | Retained counter observations with explicit kinds and units |
@@ -23,6 +25,46 @@ Summary captures deliberately omit `trace.json` and `time-series.csv`. No detail
 event history can be recovered from aggregates. Empty CSV statistic cells mean
 unavailable. The operation total is inclusive; do not sum parent and child rows
 into a CPU-use percentage.
+
+## Read the HTML report
+
+Open `report/report.html` directly in a browser; no server, scripts, network or
+installation is required. Operations are ordered by total inclusive elapsed time.
+Read calls/s beside mean ms/call to separate frequent work from expensive calls.
+Bars show relative totals, not utilization. Hover timeline bars for operation and
+timing; the expandable event list provides the same information as a table.
+Timeline rows show retained nesting, which can differ from actual nesting when
+parent events are lost. Use Perfetto for zooming. Summary reports state that a
+timeline is unavailable. Expand build metadata, context and counters for evidence.
+
+## Compare two captures
+
+```text
+phobos-scope compare BEFORE.json AFTER.json NEW_OUTPUT_DIRECTORY
+```
+
+The output contains `comparison.html`, `comparison.json` and `comparison.csv`.
+Matching uses stable operation names and requires matching kind, unit and category;
+capture-local IDs need not agree. Added, removed or incompatible definitions do not
+receive deltas. Inspect per-side measurements in HTML/JSON; unmatched CSV rows
+leave numeric fields blank. The capture format remains v1; these are derived reports.
+
+All differences are **after minus before**. Compare frequency (calls/s), mean cost
+(ms/call), inclusive elapsed work per real second (ms/s), and raw totals (ms).
+Raw totals cover different periods when capture lengths differ. Inclusive ms/s
+may exceed 1000 for nested work and is never a CPU-use percentage. Missing values
+stay unavailable; percentage change from a zero baseline is unavailable too.
+
+Warnings expose changed modes, recorder versions, metadata (including mod/game
+versions), observed context values/times, missing observations and capture loss.
+Whole-capture comparisons do not align game phases, speed changes or workloads.
+Even matching context cannot prove equivalent conditions. No statistical
+significance, causal attribution or automatic regression verdict is claimed.
+
+The demo compares `known-detailed.json` with `comparison-after.json`: outer mean
+cost increases 50%, call frequency increases approximately 33.33%, while inner
+mean cost is unchanged. Its metadata/context differences are deliberately visible.
+These are synthetic examples, not measured game regressions.
 
 ## Inspect in Perfetto
 

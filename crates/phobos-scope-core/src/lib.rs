@@ -1,11 +1,15 @@
 //! Game-independent, offline analysis. All operation timings are inclusive elapsed time.
 mod analysis;
+mod comparison;
 mod export;
+mod html;
 mod model;
 mod validation;
 
 pub use analysis::*;
+pub use comparison::*;
 pub use export::*;
+pub use html::*;
 pub use model::*;
 pub use validation::*;
 

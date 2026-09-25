@@ -18,8 +18,10 @@ pwsh -File scripts/demo.ps1 -Benchmark
 ```
 
 This creates a fresh directory under ignored `artifacts/`, containing a synthetic
-capture, reports and an optional recorder-overhead measurement. It does not
-overwrite earlier runs. Open the generated `report/trace.json` using **Open trace
+capture, an HTML report, a deterministic comparison example and an optional
+recorder-overhead measurement. It does not overwrite earlier runs. Open
+`report/report.html` or `comparison/comparison.html` in a browser. For detailed
+timeline inspection, open the generated `report/trace.json` using **Open trace
 file** at [Perfetto](https://ui.perfetto.dev), or open `summary.csv` and
 `time-series.csv` in LibreOffice Calc. See the [walkthrough](docs/getting-started.md).
 
@@ -27,6 +29,7 @@ file** at [Perfetto](https://ui.perfetto.dev), or open `summary.csv` and
 pwsh -File scripts/verify.ps1
 cargo run --release -- validate fixtures/known-detailed.json
 cargo run --release -- analyse fixtures/known-detailed.json artifacts/my-report 4
+cargo run --release -- compare fixtures/known-detailed.json fixtures/comparison-after.json artifacts/my-comparison
 ```
 
 The final argument is the time-window width in milliseconds. Output directories
@@ -44,6 +47,10 @@ they cannot create a timeline.
   scope counts and retained-event time windows.
 - Summary/time-series/counter/context CSV, Chrome Trace Event JSON and a JSON
   report carrying metadata and capture-quality warnings.
+- Self-contained HTML reports with operation rankings, retained nested timelines,
+  counters and workload context; no scripts or remote dependencies.
+- Before/after HTML, JSON and CSV comparisons separating call frequency from
+  per-call cost, with definition, context, version and quality warnings.
 - Repeatable demonstration, verification and microbenchmark scripts; Windows and
   Linux GitHub Actions checks.
 

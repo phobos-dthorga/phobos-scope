@@ -6,7 +6,7 @@ use std::{
     process::ExitCode,
 };
 
-const HELP: &str = "Phobos Scope 0.1.0\n\n  phobos-scope validate CAPTURE.json\n  phobos-scope analyse CAPTURE.json NEW_OUTPUT_DIRECTORY [WINDOW_MS]\n\nWINDOW_MS defaults to 1000. Existing output directories are never overwritten.\nTimings are inclusive elapsed time, not exclusive CPU usage.\n";
+const HELP: &str = "Phobos Scope\n\n  phobos-scope validate CAPTURE.json\n  phobos-scope analyse CAPTURE.json NEW_OUTPUT_DIRECTORY [WINDOW_MS]\n  phobos-scope compare BEFORE.json AFTER.json NEW_OUTPUT_DIRECTORY\n\nAnalysis includes report.html. Comparison includes comparison.html, JSON and CSV.\nWINDOW_MS defaults to 1000. Existing output directories are never overwritten.\nTimings are inclusive elapsed time, not exclusive CPU usage.\n";
 
 fn publish_directory(staging: &Path, output: &Path) -> std::io::Result<()> {
     const RETRY_LIMIT: usize = 20;
@@ -39,18 +39,12 @@ fn publish_directory(staging: &Path, output: &Path) -> std::io::Result<()> {
     unreachable!()
 }
 
-fn analyse(
-    c: &ValidatedCapture,
+fn write_reports(
     output: &Path,
-    window_ms: u64,
+    write: impl FnOnce(&Path) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if output.exists() {
         return Err("Output already exists; select a new directory.".into());
-    }
-    let width_ticks =
-        (window_ms as u128 * c.data().clock_frequency_hz as u128 / 1_000).try_into()?;
-    if c.data().mode == Mode::Detailed {
-        time_windows(c, width_ticks)?;
     }
     let parent = output
         .parent()
@@ -60,7 +54,29 @@ fn analyse(
     let staging = parent.join(format!(".phobos-scope-{}", std::process::id()));
     fs::create_dir(&staging)?;
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        write(&staging)?;
+        publish_directory(&staging, output)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+fn analyse(
+    c: &ValidatedCapture,
+    output: &Path,
+    window_ms: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let width_ticks =
+        (window_ms as u128 * c.data().clock_frequency_hz as u128 / 1_000).try_into()?;
+    if c.data().mode == Mode::Detailed {
+        time_windows(c, width_ticks)?;
+    }
+    write_reports(output, |staging| {
         summary_csv(c, File::create(staging.join("summary.csv"))?)?;
+        report_html(c, File::create(staging.join("report.html"))?)?;
         counters_csv(c, File::create(staging.join("counters.csv"))?)?;
         contexts_csv(c, File::create(staging.join("context.csv"))?)?;
         if c.data().mode == Mode::Detailed {
@@ -82,16 +98,8 @@ fn analyse(
             "semantics":"Inclusive elapsed time. Nested totals overlap. Empty cells are unavailable. Time-series rows use retained events only; omitted rows are not evidence of no work."
         });
         serde_json::to_writer_pretty(File::create(staging.join("report.json"))?, &manifest)?;
-        if output.exists() {
-            return Err("Output appeared during analysis; select a new directory.".into());
-        }
-        publish_directory(&staging, output)?;
         Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_dir_all(&staging);
-    }
-    result
+    })
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,7 +113,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let valid = (args[0] == "validate" && args.len() == 2)
-        || (args[0] == "analyse" && (args.len() == 3 || args.len() == 4));
+        || (args[0] == "analyse" && (args.len() == 3 || args.len() == 4))
+        || (args[0] == "compare" && args.len() == 4);
     if !valid {
         return Err(format!("Invalid arguments.\n{HELP}").into());
     }
@@ -113,7 +122,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     for warning in c.warnings() {
         eprintln!("Warning: {warning}");
     }
-    if args[0] == "analyse" {
+    if args[0] == "compare" {
+        let after = read_capture(File::open(&args[2])?)?;
+        let comparison = compare(&c, &after);
+        for warning in &comparison.warnings {
+            eprintln!("Warning: {warning}");
+        }
+        write_reports(Path::new(&args[3]), |staging| {
+            comparison_html(&comparison, File::create(staging.join("comparison.html"))?)?;
+            comparison_csv(&comparison, File::create(staging.join("comparison.csv"))?)?;
+            serde_json::to_writer_pretty(
+                File::create(staging.join("comparison.json"))?,
+                &comparison,
+            )?;
+            Ok(())
+        })?;
+        println!("Comparison written to {}", Path::new(&args[3]).display());
+    } else if args[0] == "analyse" {
         let window_ms = if args.len() == 4 {
             args[3]
                 .to_str()

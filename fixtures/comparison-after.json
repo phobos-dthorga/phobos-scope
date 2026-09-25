@@ -1,0 +1,38 @@
+{
+  "format_version": 1,
+  "recorder_version": "synthetic/1",
+  "capture_id": "synthetic-higher-frequency-and-cost",
+  "mode": "detailed",
+  "clock_frequency_hz": 1000,
+  "end_tick": 60,
+  "stop_reason": "manual",
+  "limits": { "max_records": 20, "max_depth": 4, "max_duration_ticks": 1000 },
+  "definitions": [
+    { "id": 0, "name": "fixture.outer", "category": "test", "unit": "ticks", "kind": "operation" },
+    { "id": 1, "name": "fixture.inner", "category": "test", "unit": "ticks", "kind": "operation" },
+    { "id": 2, "name": "fixture.queue", "category": "test", "unit": "items", "kind": "gauge" },
+    { "id": 3, "name": "fixture.speed", "category": "context", "unit": "text", "kind": "context" }
+  ],
+  "aggregates": [
+    { "metric": 0, "calls": 4, "total_ticks": 60, "max_ticks": 15, "incomplete": 0 },
+    { "metric": 1, "calls": 4, "total_ticks": 12, "max_ticks": 3, "incomplete": 0 }
+  ],
+  "events": [
+    { "metric": 1, "start_tick": 2, "duration_ticks": 3 },
+    { "metric": 0, "start_tick": 0, "duration_ticks": 15 },
+    { "metric": 1, "start_tick": 17, "duration_ticks": 3 },
+    { "metric": 0, "start_tick": 15, "duration_ticks": 15 },
+    { "metric": 1, "start_tick": 32, "duration_ticks": 3 },
+    { "metric": 0, "start_tick": 30, "duration_ticks": 15 },
+    { "metric": 1, "start_tick": 47, "duration_ticks": 3 },
+    { "metric": 0, "start_tick": 45, "duration_ticks": 15 }
+  ],
+  "counters": [{ "metric": 2, "tick": 5, "value": 14 }],
+  "contexts": [
+    { "metric": 3, "tick": 0, "value": "1x" },
+    { "metric": 3, "tick": 30, "value": "4x" }
+  ],
+  "metadata": [{ "key": "workload", "value": "Synthetic comparison example; increased frequency and outer cost, unchanged inner cost; no game data" }],
+  "dropped_records": 0,
+  "rejected_measurements": 0
+}

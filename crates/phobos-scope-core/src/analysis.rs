@@ -2,7 +2,7 @@ use crate::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OperationStats {
     pub metric: usize,
     pub name: String,

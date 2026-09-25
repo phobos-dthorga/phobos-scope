@@ -6,7 +6,7 @@ fn csv_error(e: impl std::fmt::Display) -> Error {
     Error::new("export.csv", e.to_string())
 }
 // Preserve source names in captures/JSON; neutralize formula-like labels for spreadsheets.
-fn cell(text: &str) -> String {
+pub(crate) fn cell(text: &str) -> String {
     if text.trim_start().starts_with(['=', '+', '-', '@']) || text.starts_with(['\t', '\r', '\n']) {
         format!("'{text}")
     } else {

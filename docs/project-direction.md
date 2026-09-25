@@ -21,8 +21,10 @@ routing, processing and panel operations are instrumented. Next, verify the
 loader and lifecycle during owner-run gameplay and collect comparable captures.
 Follow `ostranauts-integration.md`.
 
-Comparison automation, spike ranking, sample-supported percentiles, reusable Calc
-charts and a self-contained HTML report should follow actual capture questions.
+The offline analyser now includes self-contained HTML reports and descriptive
+two-capture comparison with explicit workload/quality warnings. Spike ranking,
+sample-supported percentiles and reusable Calc charts remain later work, guided
+by actual capture questions.
 Lua adapters wait for a concrete consumer. Cross-thread recording needs a deliberate
 contract extension. There is no native Rust game DLL, background service, upload,
 live streaming, custom timeline viewer or package publication in this slice.

@@ -7,6 +7,8 @@ Clippy with warnings as errors, runs Rust behaviour tests, builds Release output
 runs deterministic C# lifecycle checks and analyses every generated C# fixture
 through the real Rust CLI. It also checks known statistics, summary-mode export
 limits, CSV escaping, loss accounting and CLI failure/retry boundaries.
+It also renders HTML for C# detailed/summary captures and compares two synthetic
+captures with known changes, verifying frequency separately from mean cost.
 
 Run with `-TraceProcessor <path-to-trace_processor_shell>` to add an actual Perfetto
 import check. The local official v58.2 importer accepts the sample's 240 duration
@@ -57,6 +59,24 @@ no managed memory after warm-up; they do not prove literally zero overhead.
 Detailed allocations include stored event objects and list growth. These numbers
 are not representative game overhead, a target budget, or a percentage guarantee.
 
-Ostranauts integration, loader compatibility and in-game behaviour/performance
-remain unverified. Automated run comparisons, percentile estimates and graphical
-report templates are later work.
+Ostranauts loader compatibility and in-game behaviour/performance remain
+unverified. The adapter is implemented in the consumer repository. Descriptive
+two-capture comparison and HTML reports are implemented in analyser 0.2.0;
+percentile estimates and automatic regression verdicts are not implemented.
+
+## HTML and comparison checks (0.2.0)
+
+Rust checks cover changed frequency versus mean cost, duration normalization,
+clock-frequency and metric-ID differences, missing or incompatible definitions,
+zero baselines/durations, context changes, versions, loss, formula-safe CSV,
+HTML escaping and output failures. Capture-provided text cannot create HTML tags
+or scripts; reports contain no JavaScript or external resources. Summary HTML
+never invents duration events. The full verification script checks both HTML
+and comparison delivery, unchanged existing outputs and invalid-input rejection.
+
+For optional visual review on Windows, run `scripts/render-html.ps1 -HtmlFile
+<report.html> -BrowserPath <Chromium-or-Edge-executable>`. It creates desktop and
+narrow-window screenshots under a fresh ignored `artifacts/html-review-*`
+directory, using separate headless profiles without interacting with an open
+browser session. Screenshot generation is not a substitute for inspecting the
+result. The initial report and comparison layouts were inspected locally in Edge.

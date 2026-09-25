@@ -19,6 +19,17 @@ try {
     }
     Invoke-Checked $cli @('analyse', 'fixtures/known-detailed.json', (Join-Path $output 'fixture-report'), '4')
     Invoke-Checked $cli @('analyse', (Join-Path $output 'sample.json'), (Join-Path $output 'sample-report'), '100')
+    Invoke-Checked $cli @('compare', 'fixtures/known-detailed.json', 'fixtures/comparison-after.json', (Join-Path $output 'comparison'))
+    Invoke-Checked $cli @('compare', (Join-Path $output 'recorder/known-detailed.json'), (Join-Path $output 'recorder/known-summary.json'), (Join-Path $output 'recorder-comparison'))
+    $comparison = Get-Content -LiteralPath (Join-Path $output 'comparison/comparison.json') -Raw | ConvertFrom-Json
+    $outer = $comparison.operations | Where-Object name -eq 'fixture.outer'
+    $inner = $comparison.operations | Where-Object name -eq 'fixture.inner'
+    if ($outer.mean_ms.percent -ne 50 -or [Math]::Abs($outer.calls_per_second.percent - 100/3) -gt 0.000001 -or $inner.mean_ms.percent -ne 0) {
+        throw 'Comparison confused changed frequency with changed per-call cost.'
+    }
+    foreach ($page in @('sample-report/report.html', 'reports/known-summary/report.html', 'comparison/comparison.html')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $output $page))) { throw "HTML report missing: $page" }
+    }
     $known = Get-Content -LiteralPath (Join-Path $output 'reports/known-detailed/report.json') -Raw | ConvertFrom-Json
     if ($known.statistics[0].total_ms -ne 10 -or $known.statistics[1].total_ms -ne 3 -or $known.statistics[0].calls_per_second -ne 50) {
         throw 'Known C# capture did not produce expected Rust statistics.'
@@ -43,12 +54,19 @@ try {
     Set-Content -LiteralPath $invalid -Value '{"format_version":1,"events":[' -NoNewline
     $expectedError = & $cli validate $invalid 2>&1
     if ($LASTEXITCODE -eq 0 -or "$expectedError" -notmatch 'capture.json') { throw 'CLI did not explain truncated JSON.' }
+    $comparisonPath = Join-Path $output 'comparison/comparison.html'
+    $comparisonHash = (Get-FileHash -LiteralPath $comparisonPath).Hash
+    $expectedError = & $cli compare 'fixtures/known-detailed.json' 'fixtures/comparison-after.json' (Join-Path $output 'comparison') 2>&1
+    if ($LASTEXITCODE -eq 0 -or (Get-FileHash -LiteralPath $comparisonPath).Hash -ne $comparisonHash) { throw 'CLI overwrote an existing comparison.' }
+    $invalidOutput = Join-Path $output 'invalid-comparison'
+    $expectedError = & $cli compare 'fixtures/known-detailed.json' $invalid $invalidOutput 2>&1
+    if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $invalidOutput)) { throw 'Invalid comparison left published output.' }
     # Both expected native failures passed their assertions; report overall success to CI.
     $global:LASTEXITCODE = 0
     if ($TraceProcessor) {
         & (Join-Path $PSScriptRoot 'verify-perfetto.ps1') -TraceProcessor $TraceProcessor -ReportDirectory (Join-Path $output 'sample-report')
     }
-    Write-Host "Verified Rust behaviour, C# lifecycle, $($captures.Count) cross-language captures, sample exports and CLI failure paths."
+    Write-Host "Verified Rust behaviour, C# lifecycle, $($captures.Count) cross-language captures, HTML/comparison exports and CLI failure paths."
     Write-Host "Verification artifacts: $output"
 }
 finally { Pop-Location }
