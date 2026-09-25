@@ -13,6 +13,7 @@ public sealed class CaptureSnapshot
     public string StopReason => data.StopReason;
     public long DroppedRecords => data.DroppedRecords;
     public long RejectedMeasurements => data.RejectedMeasurements;
+    public RecordingStatus Status => new RecordingStatus(data, false, data.EndTick, data.RejectedMeasurements, 0);
 
     public void WriteJson(Stream destination)
     {

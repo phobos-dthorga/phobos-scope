@@ -39,6 +39,7 @@ public readonly struct TimingScope : IDisposable
 /// <summary>Opt-in synchronous recorder. Setup/lifecycle belong to its creating thread.</summary>
 public sealed class Recorder
 {
+    public const string Version = "0.1.1";
     public const int MaxDefinitions = 256;
     public const int MaxTextBytes = 512;
     public const int MaxRecordLimit = 20_000;
@@ -63,6 +64,13 @@ public sealed class Recorder
     private int records;
     public bool IsRecording => enabled;
     public CaptureSnapshot? LastCapture { get; private set; }
+
+    /// <summary>Owner-thread status query. Polls limits without stopping a live capture.</summary>
+    public RecordingStatus? GetStatus()
+    {
+        RequireOwner(); Poll();
+        return active != null ? new RecordingStatus(active, true, lastTick, Interlocked.Read(ref rejected), depth) : LastCapture?.Status;
+    }
 
     public Recorder() : this(Stopwatch.GetTimestamp, Stopwatch.Frequency) { }
     // Injectable monotonic clock enables deterministic lifecycle and precision checks.

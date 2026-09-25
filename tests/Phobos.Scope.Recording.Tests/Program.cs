@@ -26,6 +26,7 @@ var outer = r.RegisterOperation("fixture.outer", "test");
 var inner = r.RegisterOperation("fixture.inner", "test");
 var counter = r.RegisterCounter("fixture.queue", "test", "items", CounterKind.Gauge);
 var context = r.RegisterContext("fixture.speed", "context");
+Check(r.GetStatus() == null && reads == 0, "Idle status has no fabricated capture and reads no clock");
 for (var i = 0; i < 100; i++) { using (r.Measure(outer)) { } r.Sample(counter, 1); r.Context(context, "1x"); r.Poll(); }
 Check(reads == 0, "Disabled paths read no clocks");
 long beforeBytes = GC.GetAllocatedBytesForCurrentThread();
@@ -34,6 +35,8 @@ Check(GC.GetAllocatedBytesForCurrentThread() == beforeBytes, "Disabled instrumen
 r.Start();
 r.Context(context, "1x");
 var first = r.Measure(outer); clock += 2;
+var live = r.GetStatus()!;
+Check(live.IsRecording && live.OpenScopes == 1 && live.CompletedScopes == 0 && live.ElapsedSeconds == .002, "Live status observes without closing an open scope");
 var second = r.Measure(inner); clock += 3; second.Dispose(); second.Dispose();
 r.Sample(counter, 7); clock += 5; first.Dispose(); clock += 10;
 r.Context(context, "4x");
@@ -42,6 +45,7 @@ Check(Field(data, "end_tick") == 20, "Large absolute clock is subtracted before 
 Check(Field(Aggregate(data), "total_ticks") == 10 && Field(Aggregate(data, 1), "total_ticks") == 3, "Nested inclusive durations remain distinct");
 Check(Field(Aggregate(data, 1), "calls") == 1, "Double disposal is idempotent");
 Check(data.GetProperty("contexts")[1].GetProperty("tick").GetInt64() == 20, "Changing context has its own timestamp");
+Check(!r.GetStatus()!.IsRecording && snapshot.Status.CompletedScopes == 2 && live.CompletedScopes == 0, "Stopped and previously read status views are immutable");
 Save("known-detailed", snapshot);
 
 r.Start(new CaptureOptions { Mode = CaptureMode.Summary });

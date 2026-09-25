@@ -8,6 +8,37 @@ use std::{
 
 const HELP: &str = "Phobos Scope 0.1.0\n\n  phobos-scope validate CAPTURE.json\n  phobos-scope analyse CAPTURE.json NEW_OUTPUT_DIRECTORY [WINDOW_MS]\n\nWINDOW_MS defaults to 1000. Existing output directories are never overwritten.\nTimings are inclusive elapsed time, not exclusive CPU usage.\n";
 
+fn publish_directory(staging: &Path, output: &Path) -> std::io::Result<()> {
+    const RETRY_LIMIT: usize = 20;
+    for attempt in 0..=RETRY_LIMIT {
+        if output.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "Output already exists.",
+            ));
+        }
+        match fs::rename(staging, output) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if cfg!(windows)
+                    && attempt < RETRY_LIMIT
+                    && matches!(error.raw_os_error(), Some(5 | 32 | 33)) =>
+            {
+                // Indexers/sync clients may briefly hold a newly written Windows directory.
+                // Retry the same rename only; never replace another output or change permissions.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(error) => {
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("Could not publish report directory: {error}"),
+                ));
+            }
+        }
+    }
+    unreachable!()
+}
+
 fn analyse(
     c: &ValidatedCapture,
     output: &Path,
@@ -54,7 +85,7 @@ fn analyse(
         if output.exists() {
             return Err("Output appeared during analysis; select a new directory.".into());
         }
-        fs::rename(&staging, output)?;
+        publish_directory(&staging, output)?;
         Ok(())
     })();
     if result.is_err() {

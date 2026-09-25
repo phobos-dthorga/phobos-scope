@@ -60,7 +60,7 @@ internal sealed class Metadata
 internal sealed class CaptureData
 {
     [DataMember(Name = "format_version")] public int FormatVersion = 1;
-    [DataMember(Name = "recorder_version")] public string RecorderVersion = "Phobos.Scope.Recording/0.1.0";
+    [DataMember(Name = "recorder_version")] public string RecorderVersion = "Phobos.Scope.Recording/" + Recorder.Version;
     [DataMember(Name = "capture_id")] public string CaptureId = "";
     [DataMember(Name = "mode")] public string Mode = "";
     [DataMember(Name = "clock_frequency_hz")] public long ClockFrequencyHz;
