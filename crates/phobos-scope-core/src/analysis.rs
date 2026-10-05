@@ -14,6 +14,9 @@ pub struct OperationStats {
     pub mean_ms: Option<f64>,
     pub max_ms: Option<f64>,
     pub calls_per_second: Option<f64>,
+    /// Format 3: time spent in this operation outside its own measured child operations.
+    pub self_ms: Option<f64>,
+    pub mean_self_ms: Option<f64>,
     pub retained_calls: usize,
 }
 
@@ -108,9 +111,29 @@ pub fn statistics(capture: &ValidatedCapture) -> Vec<OperationStats> {
             max_ms: (a.calls > 0).then(|| milliseconds(a.max_ticks, c.clock_frequency_hz)),
             calls_per_second: (c.end_tick > 0)
                 .then(|| a.calls as f64 * c.clock_frequency_hz as f64 / c.end_tick as f64),
+            self_ms: a.self_ticks.map(|t| milliseconds(t, c.clock_frequency_hz)),
+            mean_self_ms: a
+                .self_ticks
+                .filter(|_| a.calls > 0)
+                .map(|t| milliseconds(t, c.clock_frequency_hz) / a.calls as f64),
             retained_calls: c.events.iter().filter(|e| e.metric == a.metric).count(),
         })
         .collect()
+}
+
+/// Format 3: the share of the capture's real time spent inside measured operations on the recording thread. Self times
+/// never overlap there, so they add up; this is elapsed time, not CPU use, and unmeasured work is not in it.
+pub fn measured_share(capture: &ValidatedCapture) -> Option<f64> {
+    let c = &capture.data;
+    if c.end_tick == 0 || c.aggregates.iter().any(|a| a.self_ticks.is_none()) {
+        return None;
+    }
+    let total: u128 = c
+        .aggregates
+        .iter()
+        .map(|a| a.self_ticks.unwrap_or(0) as u128)
+        .sum();
+    Some(total as f64 / c.end_tick as f64)
 }
 
 #[derive(Debug, Serialize)]

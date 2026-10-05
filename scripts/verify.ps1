@@ -43,6 +43,16 @@ try {
     if ($totals.samples -ne '50' -or $totals.sum -ne '225' -or $totals.basis -ne 'complete_total') {
         throw 'Format 2 summary counter totals did not survive the C# to Rust round trip.'
     }
+    $self = @(Import-Csv -LiteralPath (Join-Path $output 'reports/self-time/summary.csv'))
+    if (($self | Where-Object name -eq 'fixture.outer').self_ms -ne '5' -or ($self | Where-Object name -eq 'fixture.inner').self_ms -ne '5') {
+        throw 'Format 3 self times did not survive the C# to Rust round trip.'
+    }
+    Invoke-Checked $cli @('series', (Join-Path $output 'series'), (Join-Path $output 'recorder/known-detailed.json'), (Join-Path $output 'recorder/self-time.json'), (Join-Path $output 'recorder/summary-counters.json'))
+    foreach ($file in @('series.html', 'series.csv', 'series.json')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $output "series/$file"))) { throw "Series output missing: $file" }
+    }
+    $series = Get-Content -LiteralPath (Join-Path $output 'series/series.json') -Raw | ConvertFrom-Json
+    if ($series.windows.Count -ne 3 -or -not ($series.warnings -match 'order given')) { throw 'Series did not keep unmarked captures in the given order with a note.' }
     $escaped = Import-Csv -LiteralPath (Join-Path $output 'reports/escaped/summary.csv')
     if ($escaped.name -ne "'=formula,`"quoted`"`nline") { throw 'CSV escaping/formula neutralisation failed.' }
     $sample = Get-Content -LiteralPath (Join-Path $output 'sample-report/report.json') -Raw | ConvertFrom-Json

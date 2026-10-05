@@ -324,7 +324,7 @@ fn format_one_counters_report_retained_samples_only() {
     assert_eq!(s[0].basis, "retained_samples");
     assert_eq!(s[0].samples, 1);
     assert_eq!(
-        read_capture(br#"{"format_version":3}"#.as_slice())
+        read_capture(br#"{"format_version":4}"#.as_slice())
             .unwrap_err()
             .code,
         "capture.version"

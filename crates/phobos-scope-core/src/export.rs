@@ -29,6 +29,8 @@ pub fn summary_csv(capture: &ValidatedCapture, writer: impl Write) -> Result<(),
         "retained_calls",
         "dropped_records",
         "rejected_measurements",
+        "self_ms",
+        "mean_self_ms",
     ])
     .map_err(csv_error)?;
     for s in statistics(capture) {
@@ -47,6 +49,8 @@ pub fn summary_csv(capture: &ValidatedCapture, writer: impl Write) -> Result<(),
             s.retained_calls.to_string(),
             capture.data.dropped_records.to_string(),
             capture.data.rejected_measurements.to_string(),
+            s.self_ms.map(|v| v.to_string()).unwrap_or_default(),
+            s.mean_self_ms.map(|v| v.to_string()).unwrap_or_default(),
         ])
         .map_err(csv_error)?;
     }

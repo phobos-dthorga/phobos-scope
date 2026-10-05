@@ -6,7 +6,7 @@ use std::{
     process::ExitCode,
 };
 
-const HELP: &str = "Phobos Scope\n\n  phobos-scope validate CAPTURE.json\n  phobos-scope analyse CAPTURE.json NEW_OUTPUT_DIRECTORY [WINDOW_MS]\n  phobos-scope compare BEFORE.json AFTER.json NEW_OUTPUT_DIRECTORY\n\nAnalysis includes report.html. Comparison includes comparison.html, JSON and CSV.\nWINDOW_MS defaults to 1000. Existing output directories are never overwritten.\nTimings are inclusive elapsed time, not exclusive CPU usage.\n";
+const HELP: &str = "Phobos Scope\n\n  phobos-scope validate CAPTURE.json\n  phobos-scope analyse CAPTURE.json NEW_OUTPUT_DIRECTORY [WINDOW_MS]\n  phobos-scope compare BEFORE.json AFTER.json NEW_OUTPUT_DIRECTORY\n  phobos-scope series NEW_OUTPUT_DIRECTORY CAPTURE.json [CAPTURE.json ...]\n\nAnalysis includes report.html. Comparison includes comparison.html, JSON and CSV.\nA series joins the windows of one recording: series.html, series.json and series.csv.\nWINDOW_MS defaults to 1000. Existing output directories are never overwritten.\nTimings are inclusive elapsed time, not exclusive CPU usage.\n";
 
 fn publish_directory(staging: &Path, output: &Path) -> std::io::Result<()> {
     const RETRY_LIMIT: usize = 20;
@@ -111,6 +111,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.len() == 1 && args[0] == "--version" {
         println!("phobos-scope {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    if args[0] == "series" {
+        if args.len() < 3 || args.len() - 2 > MAX_SERIES_CAPTURES {
+            return Err(format!("Invalid arguments.\n{HELP}").into());
+        }
+        let mut captures = Vec::new();
+        for path in &args[2..] {
+            let capture = read_capture(File::open(path)?)
+                .map_err(|e| format!("{}: {e}", Path::new(path).display()))?;
+            captures.push(capture);
+        }
+        let report = series(&captures)?;
+        for warning in &report.warnings {
+            eprintln!("Note: {warning}");
+        }
+        write_reports(Path::new(&args[1]), |staging| {
+            series_html(&report, File::create(staging.join("series.html"))?)?;
+            series_csv(&report, File::create(staging.join("series.csv"))?)?;
+            serde_json::to_writer_pretty(File::create(staging.join("series.json"))?, &report)?;
+            Ok(())
+        })?;
+        println!("Series written to {}", Path::new(&args[1]).display());
         return Ok(());
     }
     let valid = (args[0] == "validate" && args.len() == 2)

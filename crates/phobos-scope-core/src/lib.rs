@@ -4,6 +4,7 @@ mod comparison;
 mod export;
 mod html;
 mod model;
+mod series;
 mod validation;
 
 pub use analysis::*;
@@ -11,6 +12,7 @@ pub use comparison::*;
 pub use export::*;
 pub use html::*;
 pub use model::*;
+pub use series::*;
 pub use validation::*;
 
 use std::{fmt, io::Read};
@@ -61,7 +63,7 @@ pub fn read_capture(reader: impl Read) -> Result<ValidatedCapture, Error> {
     {
         return Err(Error::new(
             "capture.version",
-            "Expected format_version 1 or 2; use a compatible analyser.",
+            "Expected format_version 1, 2 or 3; use a compatible analyser.",
         ));
     }
     // Deserialize the original bytes so duplicate object keys remain an error.

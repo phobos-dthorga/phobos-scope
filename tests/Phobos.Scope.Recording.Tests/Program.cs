@@ -46,6 +46,8 @@ var snapshot = r.Stop()!; var data = Data(snapshot);
 Check(Field(data, "end_tick") == 20, "Large absolute clock is subtracted before export");
 Check(Field(Aggregate(data), "total_ticks") == 10 && Field(Aggregate(data, 1), "total_ticks") == 3, "Nested inclusive durations remain distinct");
 Check(Field(Aggregate(data, 1), "calls") == 1, "Double disposal is idempotent");
+Check(Field(data, "format_version") == 3 && Field(Aggregate(data), "self_ticks") == 7 && Field(Aggregate(data, 1), "self_ticks") == 3,
+    "Self time is the duration less completed child scopes: outer 10 - inner 3 = 7, inner 3");
 Check(data.GetProperty("contexts")[1].GetProperty("tick").GetInt64() == 20, "Changing context has its own timestamp");
 Check(!r.GetStatus()!.IsRecording && snapshot.Status.CompletedScopes == 2 && live.CompletedScopes == 0, "Stopped and previously read status views are immutable");
 Save("known-detailed", snapshot);
@@ -62,7 +64,7 @@ r.Start(new CaptureOptions { Mode = CaptureMode.Summary, MaxRecords = 2 });
 for (var i = 1; i <= 50; i++) { r.Sample(counter, i % 10); clock++; }
 r.Context(context, "1x");
 snapshot = r.Stop()!; data = Data(snapshot); var total = Total(data, 2);
-Check(Field(data, "format_version") == 2 && data.GetProperty("counters").GetArrayLength() == 0 && snapshot.DroppedRecords == 0,
+Check(Field(data, "format_version") == 3 && data.GetProperty("counters").GetArrayLength() == 0 && snapshot.DroppedRecords == 0,
     "Summary counters keep totals without retaining samples or dropping records");
 Check(Field(total, "samples") == 50 && Number(total, "sum") == 225 && Number(total, "min") == 0 && Number(total, "max") == 9 && Number(total, "last") == 0,
     "A counter total holds its sample count, sum, minimum, maximum and last value");
@@ -106,7 +108,24 @@ r.Start(new CaptureOptions { MaxDepth = 1 });
 using (r.Measure(outer)) { using (r.Measure(inner)) clock += 1; }
 snapshot = r.Stop()!;
 Check(snapshot.RejectedMeasurements == 1 && Field(Aggregate(Data(snapshot)), "calls") == 1, "Depth cap rejects nested measurements without breaking outer scope");
+Check(Field(Aggregate(Data(snapshot)), "self_ticks") == Field(Aggregate(Data(snapshot)), "total_ticks"), "A nested call rejected at the depth limit stays in its parent's self time");
 Save("depth-limit", snapshot);
+
+// Self time across recursion and siblings: outer(10) holds inner(2) which holds inner(1), then a sibling inner(3).
+r.Start();
+using (r.Measure(outer))
+{
+    clock += 1;
+    using (r.Measure(inner)) { clock += 1; using (r.Measure(inner)) clock += 1; }
+    clock += 2;
+    using (r.Measure(inner)) clock += 3;
+    clock += 2;
+}
+data = Data(r.Stop()!);
+Check(Field(Aggregate(data), "total_ticks") == 10 && Field(Aggregate(data), "self_ticks") == 5, "Outer self time excludes both direct children, not the grandchild twice");
+Check(Field(Aggregate(data, 1), "total_ticks") == 6 && Field(Aggregate(data, 1), "self_ticks") == 5 && Field(Aggregate(data, 1), "calls") == 3,
+    "Recursive inner self times sum to its exclusive time: 1 + 1 + 3");
+Save("self-time", r.LastCapture!);
 
 r.Start(); first = r.Measure(outer); second = r.Measure(inner); clock += 1; first.Dispose(); second.Dispose(); snapshot = r.Stop()!;
 Check(snapshot.StopReason == "nesting_error" && Data(snapshot).GetProperty("aggregates").EnumerateArray().All(a => Field(a, "incomplete") == 1), "Non-LIFO scopes stop cleanly with incomplete records");

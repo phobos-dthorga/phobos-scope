@@ -1,9 +1,10 @@
-# Phobos Scope capture format v2
+# Phobos Scope capture format v3
 
-Status: implemented standalone contract. Recorder 0.2.0 writes format 2; analyser
-0.3.0 reads formats 1 and 2. Format 2 adds `counter_aggregates` and stops summary
-mode from retaining counter samples (see [Format 2 changes](#format-2-changes)).
-Everything else is unchanged from format 1. Encoding: UTF-8 JSON, one complete object.
+Status: implemented standalone contract. Recorder 0.3.0 writes format 3; analyser
+0.4.0 reads formats 1, 2 and 3. Format 2 added `counter_aggregates` and stopped
+summary mode from retaining counter samples (see [Format 2 changes](#format-2-changes)).
+Format 3 adds `self_ticks` to every operation aggregate (see
+[Format 3 changes](#format-3-changes)). Everything else is unchanged from format 1. Encoding: UTF-8 JSON, one complete object.
 See [`fixtures/known-detailed.json`](../fixtures/known-detailed.json). The public
 Rust model and validator are the executable schema. Unknown fields, unsupported
 versions, malformed/truncated JSON and inconsistent data are errors. A stopped
@@ -13,7 +14,7 @@ capture with declared drops/incomplete scopes is valid but carries quality warni
 
 | Key | Meaning |
 |---|---|
-| `format_version` | Integer `2` (or `1` for older captures); incompatible changes require another version |
+| `format_version` | Integer `3` (or `1` and `2` for older captures); incompatible changes require another version |
 | `recorder_version` | Bounded nonempty recorder identity/version |
 | `capture_id` | Unique bounded identity; C# uses a random GUID, with no personal path |
 | `mode` | `summary` or `detailed` |
@@ -105,6 +106,44 @@ and a sum equal within a relative 1e-9.
 Format 1 captures carry no totals. The analyser reports their counters from
 retained samples, labelled `retained_samples`, which are partial when records were
 dropped.
+
+## Format 3 changes
+
+Each operation aggregate gains `self_ticks`: the part of `total_ticks` spent outside
+the operation's own completed child scopes. The recorder subtracts each completed
+child's duration from its parent as the child ends. Children lie inside their
+parent on the single recording thread, so self time is never negative, and self
+times of different scopes never overlap: unlike inclusive totals, they add up. A
+nested call rejected at the depth limit was never on the stack, so its time stays in
+its parent's self time. Self time is still elapsed time on that thread, not CPU use,
+and it includes waits and any unmeasured work done inside the scope.
+
+The validator requires `self_ticks <= total_ticks`, requires it in format 3 and
+refuses it earlier. In a detailed capture with no dropped records it recomputes self
+time from the retained events (each event's duration less its direct children's)
+and requires an exact match. Events with equal start and duration are ordered by
+completion: the one that completed later is the parent, as the recorder saw them.
+
+The analyser reports self ms, mean self ms per call, and the share of the capture's
+real time spent inside measured operations (self times added up). The comparison
+reports self ms per real second where both captures have it.
+
+## Recording series
+
+`phobos-scope series NEW_OUTPUT_DIRECTORY CAPTURE.json...` joins the windows of one
+recording into a timeline (`series.html`, `series.json`, `series.csv`). Windows are
+ordered by two metadata keys an adapter may write: `recording_id` (one value per
+recording) and `window` (1, 2, 3... within it). When any capture lacks them, the
+given order is kept and the report says so. Mixed recordings, and window numbers
+that skip or repeat, are reported. The time axis is recorded time, the sum of
+earlier windows' durations: gaps between windows (a world load) are not on it.
+
+Each window keeps its own complete figures. Gauges show each window's minimum,
+mean, maximum and last reading; increments and operations are per real second of
+that window. For each gauge the report gives the least-squares slope of the
+window minimums against recorded time, per hour, from three windows up. For the
+managed heap after a collection that slope is the plainest leak sign. It is a
+description, not a statistical test, and nothing is interpolated between windows.
 
 ## Completeness and lifecycle
 

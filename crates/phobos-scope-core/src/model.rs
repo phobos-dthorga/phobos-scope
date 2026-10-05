@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 /// The format this analyser writes about and the newest it reads. Format 1 captures remain readable.
-pub const FORMAT_VERSION: u32 = 2;
-pub const SUPPORTED_FORMAT_VERSIONS: [u32; 2] = [1, 2];
+pub const FORMAT_VERSION: u32 = 3;
+pub const SUPPORTED_FORMAT_VERSIONS: [u32; 3] = [1, 2, 3];
 pub const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_DEFINITIONS: usize = 256;
 pub const MAX_RECORDS: usize = 20_000;
@@ -52,6 +52,9 @@ pub struct Aggregate {
     pub calls: u64,
     pub total_ticks: u64,
     pub max_ticks: u64,
+    /// Format 3: the part of `total_ticks` spent outside the operation's own measured child scopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_ticks: Option<u64>,
     pub incomplete: u64,
 }
 

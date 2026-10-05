@@ -92,3 +92,17 @@ total's range, detailed totals that disagree without drops, format 2 summary sam
 totals in a format 1 capture, and format 1 counters reported from retained samples.
 The verification script checks that a C# summary total arrives intact in the Rust
 `counter-summary.csv`. Ostranauts in-game behaviour remains unverified.
+
+## Self time, counter comparison and series (recorder 0.3.0, analyser 0.4.0)
+
+C# checks cover self time for a nested pair, siblings with a grandchild, recursion of
+one operation, and a nested call rejected at the depth limit staying in its parent's
+self time. Rust checks cover self time against retained events, a mismatch, missing
+and premature self times, self time above the total, equal spans ordered by
+completion, the measured share, counter comparison by kind (levels, rates and
+incompatible definitions), the series order from recording metadata, the floor trend
+per hour, too few windows for a trend, gaps, mixed recordings and the given order
+without metadata, and script-free series HTML. The verification script checks self
+times through the C# to Rust round trip and runs the series command on recorder
+captures. Ostranauts in-game behaviour remains unverified.
+

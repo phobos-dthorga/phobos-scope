@@ -28,6 +28,52 @@ impl ValidatedCapture {
     }
 }
 
+/// Self time per metric recomputed from retained events: each event's duration less its direct children. Ties
+/// (equal start and duration) are broken by completion order, as the recorder saw them: the later one is the parent.
+pub(crate) fn retained_self_ticks(c: &Capture) -> Vec<u128> {
+    let mut ordered: Vec<(usize, &Event)> = c.events.iter().enumerate().collect();
+    ordered.sort_by_key(|(i, e)| {
+        (
+            e.start_tick,
+            std::cmp::Reverse(e.duration_ticks),
+            std::cmp::Reverse(*i),
+        )
+    });
+    let mut children = vec![0_u128; ordered.len()];
+    let mut stack: Vec<(u64, usize)> = Vec::new();
+    for (position, (_, e)) in ordered.iter().enumerate() {
+        while stack.last().is_some_and(|(end, _)| *end <= e.start_tick) {
+            stack.pop();
+        }
+        if let Some((_, parent)) = stack.last() {
+            children[*parent] += e.duration_ticks as u128;
+        }
+        if e.duration_ticks > 0 {
+            stack.push((e.start_tick + e.duration_ticks, position));
+        }
+    }
+    let mut per_metric = vec![0_u128; c.definitions.len()];
+    for (position, (_, e)) in ordered.iter().enumerate() {
+        per_metric[e.metric] += (e.duration_ticks as u128).saturating_sub(children[position]);
+    }
+    per_metric
+}
+
+/// Format 3 detailed captures with nothing dropped must agree with their retained events exactly.
+fn self_times(c: &Capture) -> Result<(), Error> {
+    if c.format_version < 3 || c.mode != Mode::Detailed || c.dropped_records > 0 {
+        return Ok(());
+    }
+    let retained = retained_self_ticks(c);
+    for a in &c.aggregates {
+        require(
+            a.self_ticks.map(|v| v as u128) == Some(retained[a.metric]),
+            "Detailed events and self times disagree without dropped records.",
+        )?;
+    }
+    Ok(())
+}
+
 fn is_counter(kind: &Kind) -> bool {
     matches!(kind, Kind::Gauge | Kind::Cumulative | Kind::Increment)
 }
@@ -204,6 +250,15 @@ pub fn validate(c: Capture) -> Result<ValidatedCapture, Error> {
                 && (a.total_ticks as u128) <= (a.calls as u128) * (a.max_ticks as u128),
             "Aggregate count/total/maximum disagree.",
         )?;
+        match (c.format_version >= 3, a.self_ticks) {
+            (true, Some(own)) => require(
+                own <= a.total_ticks,
+                "Self time cannot exceed the operation's total time.",
+            )?,
+            (true, None) => require(false, "Format 3 aggregates carry self_ticks.")?,
+            (false, Some(_)) => require(false, "Only format 3 aggregates carry self_ticks.")?,
+            (false, None) => {}
+        }
     }
     require(
         c.definitions
@@ -287,6 +342,7 @@ pub fn validate(c: Capture) -> Result<ValidatedCapture, Error> {
         }
         last_tick = s.tick;
     }
+    self_times(&c)?;
     counter_totals(&c, definition)?;
     last_tick = 0;
     for s in &c.contexts {

@@ -117,6 +117,24 @@ pub struct OperationComparison {
     pub mean_ms: Option<Change>,
     pub total_ms: Option<Change>,
     pub inclusive_ms_per_second: Option<Change>,
+    /// Format 3 on both sides: self time per real second.
+    pub self_ms_per_second: Option<Change>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CounterComparison {
+    pub name: String,
+    /// matched, added, removed or incompatible_definition. Missing is never zero.
+    pub status: &'static str,
+    pub unit: String,
+    pub before: Option<CounterStats>,
+    pub after: Option<CounterStats>,
+    /// Gauges: the mean of samples; the maximum; the last reading. Cumulative: the last value.
+    pub mean: Option<Change>,
+    pub max: Option<Change>,
+    pub last: Option<Change>,
+    /// Increments: summed change per real second.
+    pub per_second: Option<Change>,
 }
 
 #[derive(Debug, Serialize)]
@@ -127,6 +145,7 @@ pub struct Comparison {
     pub after: CaptureOverview,
     pub warnings: Vec<String>,
     pub operations: Vec<OperationComparison>,
+    pub counters: Vec<CounterComparison>,
     pub semantics: &'static str,
 }
 
@@ -222,6 +241,7 @@ pub fn compare(before: &ValidatedCapture, after: &ValidatedCapture) -> Compariso
             mean_ms: None,
             total_ms: None,
             inclusive_ms_per_second: None,
+            self_ms_per_second: None,
         };
         if status == "matched" {
             let x = row.before.as_ref().unwrap();
@@ -233,6 +253,16 @@ pub fn compare(before: &ValidatedCapture, after: &ValidatedCapture) -> Compariso
                 (a.duration_ms > 0.0).then(|| x.total_ms * 1000.0 / a.duration_ms),
                 (b.duration_ms > 0.0).then(|| y.total_ms * 1000.0 / b.duration_ms),
             ));
+            if x.self_ms.is_some() && y.self_ms.is_some() {
+                row.self_ms_per_second = Some(Change::new(
+                    x.self_ms
+                        .filter(|_| a.duration_ms > 0.0)
+                        .map(|v| v * 1000.0 / a.duration_ms),
+                    y.self_ms
+                        .filter(|_| b.duration_ms > 0.0)
+                        .map(|v| v * 1000.0 / b.duration_ms),
+                ));
+            }
         } else {
             warnings.push(format!(
                 "Operation {name}: {status}; deltas are unavailable."
@@ -240,15 +270,91 @@ pub fn compare(before: &ValidatedCapture, after: &ValidatedCapture) -> Compariso
         }
         operations.push(row);
     }
+    let counters = compare_counters(before, after, &mut warnings);
     Comparison {
-        report_version: 1,
+        report_version: 2,
         analyser_version: env!("CARGO_PKG_VERSION"),
         before: a,
         after: b,
         warnings,
         operations,
+        counters,
         semantics: "After minus before. Completed synchronous scopes, inclusive real elapsed time. Nested totals overlap; inclusive ms/second is not CPU utilization. Missing metrics are not zero. Percentage changes from zero are unavailable. No significance or causation is inferred.",
     }
+}
+
+/// Counters matched by stable name. Gauges compare their level, increments their rate, cumulative counters their last
+/// value; a counter only one capture has, or one whose kind or unit changed, gets no difference.
+fn compare_counters(
+    before: &ValidatedCapture,
+    after: &ValidatedCapture,
+    warnings: &mut Vec<String>,
+) -> Vec<CounterComparison> {
+    let aa: BTreeMap<_, _> = counter_statistics(before)
+        .into_iter()
+        .map(|s| (s.name.clone(), s))
+        .collect();
+    let bb: BTreeMap<_, _> = counter_statistics(after)
+        .into_iter()
+        .map(|s| (s.name.clone(), s))
+        .collect();
+    if aa
+        .values()
+        .chain(bb.values())
+        .any(|s| s.basis == "retained_samples")
+        && aa
+            .values()
+            .chain(bb.values())
+            .any(|s| s.basis == "complete_total")
+    {
+        warnings.push("Counter figures mix complete totals (format 2 and later) with retained samples (format 1); the retained side is partial when records were dropped.".into());
+    }
+    let mut rows = Vec::new();
+    for name in aa.keys().chain(bb.keys()).collect::<BTreeSet<_>>() {
+        let left = aa.get(name).cloned();
+        let right = bb.get(name).cloned();
+        let status = match (&left, &right) {
+            (Some(x), Some(y))
+                if x.kind != y.kind || x.unit != y.unit || x.category != y.category =>
+            {
+                "incompatible_definition"
+            }
+            (Some(_), Some(_)) => "matched",
+            (None, _) => "added",
+            (_, None) => "removed",
+        };
+        let unit = left
+            .as_ref()
+            .or(right.as_ref())
+            .map(|s| s.unit.clone())
+            .unwrap_or_default();
+        let mut row = CounterComparison {
+            name: name.clone(),
+            status,
+            unit,
+            before: left,
+            after: right,
+            mean: None,
+            max: None,
+            last: None,
+            per_second: None,
+        };
+        if status == "matched" {
+            let x = row.before.as_ref().unwrap();
+            let y = row.after.as_ref().unwrap();
+            match x.kind {
+                Kind::Gauge => {
+                    row.mean = Some(Change::new(x.mean, y.mean));
+                    row.max = Some(Change::new(x.max, y.max));
+                    row.last = Some(Change::new(x.last, y.last));
+                }
+                Kind::Cumulative => row.last = Some(Change::new(x.last, y.last)),
+                _ => row.per_second = Some(Change::new(x.per_second, y.per_second)),
+            }
+        }
+        rows.push(row);
+    }
+    rows
 }
 
 pub fn comparison_csv(report: &Comparison, writer: impl Write) -> Result<(), Error> {
@@ -271,6 +377,7 @@ pub fn comparison_csv(report: &Comparison, writer: impl Write) -> Result<(), Err
             ("mean", "ms/call", &op.mean_ms),
             ("total", "ms", &op.total_ms),
             ("inclusive_per_second", "ms/s", &op.inclusive_ms_per_second),
+            ("self_per_second", "ms/s", &op.self_ms_per_second),
         ] {
             let mut row = vec![
                 crate::export::cell(&op.name),
@@ -287,6 +394,36 @@ pub fn comparison_csv(report: &Comparison, writer: impl Write) -> Result<(), Err
                 row.push(value.map(|v| v.to_string()).unwrap_or_default());
             }
             w.write_record(row).map_err(err)?;
+        }
+    }
+    for counter in &report.counters {
+        for (name, change) in [
+            ("counter_mean", &counter.mean),
+            ("counter_max", &counter.max),
+            ("counter_last", &counter.last),
+            ("counter_per_second", &counter.per_second),
+        ] {
+            if change.is_none() && counter.status == "matched" {
+                continue;
+            }
+            let mut row = vec![
+                crate::export::cell(&counter.name),
+                counter.status.into(),
+                name.into(),
+                crate::export::cell(&counter.unit),
+            ];
+            for value in [
+                change.as_ref().and_then(|c| c.before),
+                change.as_ref().and_then(|c| c.after),
+                change.as_ref().and_then(|c| c.difference),
+                change.as_ref().and_then(|c| c.percent),
+            ] {
+                row.push(value.map(|v| v.to_string()).unwrap_or_default());
+            }
+            w.write_record(row).map_err(err)?;
+            if counter.status != "matched" {
+                break;
+            }
         }
     }
     w.flush()

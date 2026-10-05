@@ -39,7 +39,7 @@ public readonly struct TimingScope : IDisposable
 /// <summary>Opt-in synchronous recorder. Setup/lifecycle belong to its creating thread.</summary>
 public sealed class Recorder
 {
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
     public const int MaxDefinitions = 256;
     public const int MaxTextBytes = 512;
     public const int MaxRecordLimit = 20_000;
@@ -182,10 +182,15 @@ public sealed class Recorder
         if (index != depth - 1) { Interlocked.Increment(ref rejected); Finish(tick, "nesting_error"); return; }
         var scope = stack[--depth];
         var duration = tick - scope.Tick;
+        // Self time: this scope's duration less its completed child scopes. Children always lie inside their parent on
+        // the single recording thread, so the result is never negative. A nested call rejected at the depth limit was
+        // never on the stack, so its time stays in its parent's self time.
+        var self = duration - scope.ChildTicks;
         var aggregate = aggregates[scope.Metric]!;
         if (aggregate.Calls == long.MaxValue || aggregate.TotalTicks > long.MaxValue - duration)
         { aggregate.Incomplete++; Finish(tick, "overflow"); return; }
-        aggregate.Calls++; aggregate.TotalTicks += duration; aggregate.MaxTicks = Math.Max(aggregate.MaxTicks, duration);
+        aggregate.Calls++; aggregate.TotalTicks += duration; aggregate.SelfTicks += self; aggregate.MaxTicks = Math.Max(aggregate.MaxTicks, duration);
+        if (depth > 0) stack[depth - 1].ChildTicks += duration;
         if (active!.Mode == "detailed" && Retain())
             active.Events.Add(new DurationEvent { Metric = scope.Metric, StartTick = scope.Tick, DurationTicks = duration });
     }
@@ -255,5 +260,5 @@ public sealed class Recorder
         data.RejectedMeasurements = Interlocked.Read(ref rejected);
         LastCapture = new CaptureSnapshot(data); active = null;
     }
-    private struct ActiveScope { public long Id; public int Metric; public long Tick; }
+    private struct ActiveScope { public long Id; public int Metric; public long Tick; public long ChildTicks; }
 }

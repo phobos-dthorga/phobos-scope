@@ -112,7 +112,11 @@ pub fn report_html(capture: &ValidatedCapture, writer: impl Write) -> Result<(),
         .map(|w| quality_message(w).to_owned())
         .collect();
     warnings(&mut html, &quality);
-    html.push_str("<h2>Operation cost</h2><p>Ordered by total inclusive time. Bars compare operations, not CPU percentages. Calls and durations use all completed accepted scopes, even when retained events were dropped.</p><div class=\"scroll\"><table><thead><tr><th>Operation / category</th><th>Calls</th><th>Calls/s</th><th>Total ms</th><th>Mean ms/call</th><th>Max ms</th><th>Incomplete</th><th>Retained calls</th></tr></thead><tbody>");
+    html.push_str("<h2>Operation cost</h2><p>Ordered by total inclusive time. Bars compare operations, not CPU percentages. Calls and durations use all completed accepted scopes, even when retained events were dropped. Self ms is the time an operation spent outside its own measured children: unlike totals, self times never overlap, so they show where the time actually went.</p>");
+    if let Some(share) = measured_share(capture) {
+        write!(html,"<p>Measured operations held the recording thread for {}% of the capture's real time (self times added up; elapsed time, not CPU use; unmeasured work is not included).</p>",number(Some(share*100.0))).unwrap();
+    }
+    html.push_str("<div class=\"scroll\"><table><thead><tr><th>Operation / category</th><th>Calls</th><th>Calls/s</th><th>Total ms</th><th>Self ms</th><th>Mean ms/call</th><th>Max ms</th><th>Incomplete</th><th>Retained calls</th></tr></thead><tbody>");
     let mut stats = statistics(capture);
     stats.sort_by(|a, b| b.total_ms.total_cmp(&a.total_ms).then(a.name.cmp(&b.name)));
     let largest = stats.first().map(|s| s.total_ms).unwrap_or(0.0);
@@ -122,7 +126,7 @@ pub fn report_html(capture: &ValidatedCapture, writer: impl Write) -> Result<(),
         } else {
             0.0
         };
-        write!(html,"<tr><td>{}<small>{}</small><div class=\"bar\" style=\"width:{width:.3}%\"></div></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",escape(&s.name),escape(&s.category),s.calls,number(s.calls_per_second),number(Some(s.total_ms)),number(s.mean_ms),number(s.max_ms),s.incomplete,s.retained_calls).unwrap();
+        write!(html,"<tr><td>{}<small>{}</small><div class=\"bar\" style=\"width:{width:.3}%\"></div></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",escape(&s.name),escape(&s.category),s.calls,number(s.calls_per_second),number(Some(s.total_ms)),number(s.self_ms),number(s.mean_ms),number(s.max_ms),s.incomplete,s.retained_calls).unwrap();
     }
     html.push_str("</tbody></table></div><h2>Counters</h2><p>Gauges are levels: the mean is the mean of samples, not a time-weighted average. Increments are changes: the sum is the total change. Cumulative counters are running totals: read the last value.</p>");
     let counters = counter_statistics(capture);
@@ -279,6 +283,7 @@ pub fn comparison_html(report: &Comparison, writer: impl Write) -> Result<(), Er
                 ("Frequency · calls/s", &op.calls_per_second),
                 ("Mean cost · ms/call", &op.mean_ms),
                 ("Inclusive elapsed · ms/s", &op.inclusive_ms_per_second),
+                ("Self elapsed · ms/s", &op.self_ms_per_second),
                 ("Raw total · ms", &op.total_ms),
             ] {
                 if let Some(c) = change {
@@ -310,11 +315,255 @@ pub fn comparison_html(report: &Comparison, writer: impl Write) -> Result<(), Er
         }
         html.push_str("</details>");
     }
+    html.push_str("<h2>Counter and memory changes</h2><p>Gauges are levels such as memory and footprint counts: compare their mean, maximum and last reading. Increments are changes: compare them per real second. Cumulative counters: compare the last value. A gauge mean is a mean of samples, not a time-weighted average.</p>");
+    if report.counters.is_empty() {
+        html.push_str("<p>No counters in either capture.</p>");
+    } else {
+        html.push_str("<div class=\"scroll\"><table><thead><tr><th>Counter</th><th>Status</th><th>Measure</th><th>Before</th><th>After</th><th>Difference</th><th>Change %</th><th>Unit</th></tr></thead><tbody>");
+        for counter in &report.counters {
+            let rows: Vec<(&str, &Option<Change>)> = vec![
+                ("mean", &counter.mean),
+                ("maximum", &counter.max),
+                ("last", &counter.last),
+                ("per second", &counter.per_second),
+            ];
+            let mut any = false;
+            for (label, change) in rows {
+                if let Some(c) = change {
+                    any = true;
+                    write!(html,"<tr><td>{}</td><td>{}</td><td>{label}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",escape(&counter.name),escape(counter.status),number(c.before),number(c.after),number(c.difference),number(c.percent),escape(&counter.unit)).unwrap();
+                }
+            }
+            if !any {
+                write!(html,"<tr><td>{}</td><td>{}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>{}</td></tr>",escape(&counter.name),escape(counter.status),escape(&counter.unit)).unwrap();
+            }
+        }
+        html.push_str("</tbody></table></div>");
+    }
     html.push_str("<h2>Comparison evidence</h2><div class=\"pair\"><section><h3>Before</h3>");
     evidence(&mut html, &report.before);
     html.push_str("</section><section><h3>After</h3>");
     evidence(&mut html, &report.after);
     html.push_str("</section></div><p>");
+    html.push_str(&escape(report.semantics));
+    html.push_str("</p>");
+    finish(html, writer)
+}
+
+const SERIES_COLORS: [&str; 6] = [
+    "#71d8bd", "#7bb9ed", "#d7b1f0", "#efc276", "#f09696", "#adc96e",
+];
+
+/// Bytes read better as MiB on a chart; every other unit is shown as recorded.
+fn display(value: f64, unit: &str) -> (f64, String) {
+    if unit == "bytes" {
+        (value / 1_048_576.0, "MiB".into())
+    } else {
+        (value, unit.to_owned())
+    }
+}
+
+type Line = (String, Vec<(f64, Option<f64>)>);
+
+fn polyline(html: &mut String, run: &mut Vec<String>, color: &str) {
+    if run.len() == 1 {
+        let (px, py) = run[0].split_once(',').unwrap();
+        write!(
+            html,
+            "<circle cx=\"{px}\" cy=\"{py}\" r=\"3\" fill=\"{color}\"/>"
+        )
+        .unwrap();
+    } else if run.len() > 1 {
+        write!(
+            html,
+            "<polyline fill=\"none\" stroke=\"{color}\" stroke-width=\"2\" points=\"{}\"/>",
+            run.join(" ")
+        )
+        .unwrap();
+    }
+    run.clear();
+}
+
+/// A line chart over recorded minutes. A window without a value leaves a gap in its line.
+fn chart(html: &mut String, title: &str, unit: &str, lines: &[Line], end_s: f64) {
+    let values: Vec<f64> = lines
+        .iter()
+        .flat_map(|(_, p)| p.iter().filter_map(|(_, v)| *v))
+        .map(|v| display(v, unit).0)
+        .collect();
+    let shown = display(0.0, unit).1;
+    if values.is_empty() {
+        write!(html, "<p>{}: no readings.</p>", escape(title)).unwrap();
+        return;
+    }
+    let (mut low, mut high) = values
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), v| {
+            (a.min(*v), b.max(*v))
+        });
+    if high - low < 1e-12 {
+        low -= 1.0;
+        high += 1.0;
+    }
+    let (left, right, top, bottom) = (70.0, 1020.0, 20.0, 190.0);
+    let x = |s: f64| left + if end_s > 0.0 { s / end_s } else { 0.0 } * (right - left);
+    let y = |v: f64| bottom - (v - low) / (high - low) * (bottom - top);
+    write!(html, "<h3>{}</h3><div class=\"scroll\"><svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-label=\"{}\" viewBox=\"0 0 1040 230\"><title>{}</title>", escape(title), escape(title), escape(title)).unwrap();
+    write!(html, "<text x=\"4\" y=\"{top}\">{} {}</text><text x=\"4\" y=\"{bottom}\">{} {}</text><text x=\"{left}\" y=\"215\">0 min</text><text x=\"{right}\" y=\"215\" text-anchor=\"end\">{} min recorded</text>", number(Some(high)), escape(&shown), number(Some(low)), escape(&shown), number(Some(end_s / 60.0))).unwrap();
+    write!(
+        html,
+        "<line x1=\"{left}\" y1=\"{bottom}\" x2=\"{right}\" y2=\"{bottom}\" stroke=\"#364655\"/>"
+    )
+    .unwrap();
+    for (index, (_, points)) in lines.iter().enumerate() {
+        let color = SERIES_COLORS[index % SERIES_COLORS.len()];
+        let mut run: Vec<String> = Vec::new();
+        for (s, v) in points {
+            match v {
+                Some(v) => run.push(format!("{:.2},{:.2}", x(*s), y(display(*v, unit).0))),
+                None => polyline(html, &mut run, color),
+            }
+        }
+        polyline(html, &mut run, color);
+    }
+    html.push_str("</svg></div><p>");
+    for (index, (label, _)) in lines.iter().enumerate() {
+        write!(
+            html,
+            "<span style=\"color:{}\">●</span> {} &nbsp; ",
+            SERIES_COLORS[index % SERIES_COLORS.len()],
+            escape(label)
+        )
+        .unwrap();
+    }
+    html.push_str("</p>");
+}
+
+fn operation_value(o: &OperationTrend, p: &OperationPoint) -> Option<f64> {
+    if o.basis == "self" {
+        p.self_ms_per_second
+    } else {
+        p.inclusive_ms_per_second
+    }
+}
+
+pub fn series_html(report: &Series, writer: impl Write) -> Result<(), Error> {
+    let mut html = begin(
+        "Recording series",
+        "Follow memory, footprints, frame times and operation cost across the windows of one recording.",
+    );
+    write!(html, "<div class=\"cards\"><div class=\"card\"><strong>{}</strong><span>windows</span></div><div class=\"card\"><strong>{}</strong><span>recorded minutes</span></div><div class=\"card\"><strong>{}</strong><span>gauges</span></div><div class=\"card\"><strong>{}</strong><span>operations</span></div></div>", report.windows.len(), number(Some(report.recorded_s / 60.0)), report.gauges.len(), report.operations.len()).unwrap();
+    warnings(&mut html, &report.warnings);
+    let end = report.recorded_s;
+    html.push_str("<h2>Memory and footprints</h2><p>The lowest and highest reading in each window. A lowest reading that keeps rising, above all for the heap after collection, is the plainest sign that something holds on to memory. The trend is a least-squares slope over recorded time: descriptive, and only shown from three windows up.</p>");
+    let mut any = false;
+    for g in report
+        .gauges
+        .iter()
+        .filter(|g| g.category == "memory" || g.category == "footprint")
+    {
+        any = true;
+        let lines: Vec<Line> = vec![
+            (
+                "lowest".to_owned(),
+                g.points.iter().map(|p| (p.mid_s, p.min)).collect(),
+            ),
+            (
+                "highest".to_owned(),
+                g.points.iter().map(|p| (p.mid_s, p.max)).collect(),
+            ),
+        ];
+        chart(&mut html, &g.name, &g.unit, &lines, end);
+        let unit = display(0.0, &g.unit).1;
+        let shown = |v: Option<f64>| v.map(|v| display(v, &g.unit).0);
+        write!(html, "<p>Lowest reading: first window {} {u}, last window {} {u} · trend {} {u} per recorded hour</p>", number(shown(g.first_floor)), number(shown(g.last_floor)), number(shown(g.floor_change_per_hour)), u = escape(&unit)).unwrap();
+    }
+    if !any {
+        html.push_str("<p>No memory or footprint readings in these captures.</p>");
+    }
+    if let Some(frames) = report
+        .gauges
+        .iter()
+        .find(|g| g.name == "game.frame.interval")
+    {
+        html.push_str("<h2>Frame times</h2><p>The mean and worst frame in each window. The mean is exact from the window total; the worst frame is its maximum.</p>");
+        let lines: Vec<Line> = vec![
+            (
+                "mean".to_owned(),
+                frames.points.iter().map(|p| (p.mid_s, p.mean)).collect(),
+            ),
+            (
+                "worst".to_owned(),
+                frames.points.iter().map(|p| (p.mid_s, p.max)).collect(),
+            ),
+        ];
+        chart(&mut html, "game.frame.interval", "ms", &lines, end);
+    }
+    html.push_str("<h2>Operation cost</h2><p>Milliseconds per real second for the ten costliest operations, by self time where the captures have it (format 3) and inclusive time otherwise. Self times do not overlap; inclusive times do.</p>");
+    let top: Vec<Line> = report
+        .operations
+        .iter()
+        .take(10)
+        .map(|o| {
+            (
+                format!("{} ({})", o.name, o.basis),
+                o.points
+                    .iter()
+                    .map(|p| (p.mid_s, operation_value(o, p)))
+                    .collect(),
+            )
+        })
+        .collect();
+    if top.is_empty() {
+        html.push_str("<p>No operations recorded.</p>");
+    } else {
+        chart(&mut html, "Costliest operations", "ms/s", &top, end);
+    }
+    html.push_str("<details><summary>Every operation</summary><div class=\"scroll\"><table><thead><tr><th>Operation / category</th><th>Basis</th><th>Mean ms/s</th><th>First window ms/s</th><th>Last window ms/s</th></tr></thead><tbody>");
+    for o in &report.operations {
+        write!(
+            html,
+            "<tr><td>{}<small>{}</small></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            escape(&o.name),
+            escape(&o.category),
+            o.basis,
+            number(Some(o.mean_ms_per_second)),
+            number(o.points.first().and_then(|p| operation_value(o, p))),
+            number(o.points.last().and_then(|p| operation_value(o, p)))
+        )
+        .unwrap();
+    }
+    html.push_str("</tbody></table></div></details><details><summary>Other gauges and increments</summary><div class=\"scroll\"><table><thead><tr><th>Name</th><th>Kind</th><th>First window</th><th>Last window</th><th>Unit</th></tr></thead><tbody>");
+    for g in report.gauges.iter().filter(|g| {
+        g.category != "memory" && g.category != "footprint" && g.name != "game.frame.interval"
+    }) {
+        write!(
+            html,
+            "<tr><td>{}</td><td>gauge (last)</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            escape(&g.name),
+            number(g.points.first().and_then(|p| p.last)),
+            number(g.points.last().and_then(|p| p.last)),
+            escape(&g.unit)
+        )
+        .unwrap();
+    }
+    for i in &report.increments {
+        write!(
+            html,
+            "<tr><td>{}</td><td>per second</td><td>{}</td><td>{}</td><td>{}/s</td></tr>",
+            escape(&i.name),
+            number(i.points.first().and_then(|p| p.per_second)),
+            number(i.points.last().and_then(|p| p.per_second)),
+            escape(&i.unit)
+        )
+        .unwrap();
+    }
+    html.push_str("</tbody></table></div></details><h2>Windows</h2><div class=\"scroll\"><table><thead><tr><th>Position</th><th>Recording</th><th>Window</th><th>Start s</th><th>Duration s</th><th>Stop</th><th>Quality</th></tr></thead><tbody>");
+    for w in &report.windows {
+        let quality: Vec<&str> = w.warnings.iter().map(|k| quality_message(k)).collect();
+        write!(html, "<tr><td>{}</td><td class=\"text\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class=\"text\">{}</td></tr>", w.position, escape(w.recording_id.as_deref().unwrap_or("—")), w.window.map(|v| v.to_string()).unwrap_or_else(|| "—".into()), number(Some(w.start_s)), number(Some(w.duration_s)), escape(&w.stop_reason), escape(&quality.join(" "))).unwrap();
+    }
+    html.push_str("</tbody></table></div><p>");
     html.push_str(&escape(report.semantics));
     html.push_str("</p>");
     finish(html, writer)

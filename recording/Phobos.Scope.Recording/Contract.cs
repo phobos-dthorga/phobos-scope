@@ -27,6 +27,8 @@ internal sealed class Aggregate
     [DataMember(Name = "calls")] public long Calls;
     [DataMember(Name = "total_ticks")] public long TotalTicks;
     [DataMember(Name = "max_ticks")] public long MaxTicks;
+    // Format 3: the part of total_ticks spent outside the operation's own measured child scopes.
+    [DataMember(Name = "self_ticks")] public long SelfTicks;
     [DataMember(Name = "incomplete")] public long Incomplete;
 }
 // Format 2: one complete total per counter, kept whatever the mode or the record limit.
@@ -70,7 +72,7 @@ internal sealed class Metadata
 [DataContract]
 internal sealed class CaptureData
 {
-    [DataMember(Name = "format_version")] public int FormatVersion = 2;
+    [DataMember(Name = "format_version")] public int FormatVersion = 3;
     [DataMember(Name = "recorder_version")] public string RecorderVersion = "Phobos.Scope.Recording/" + Recorder.Version;
     [DataMember(Name = "capture_id")] public string CaptureId = "";
     [DataMember(Name = "mode")] public string Mode = "";
