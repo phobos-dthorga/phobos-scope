@@ -1,6 +1,9 @@
-# Phobos Scope capture format v1
+# Phobos Scope capture format v2
 
-Status: implemented standalone contract. Encoding: UTF-8 JSON, one complete object.
+Status: implemented standalone contract. Recorder 0.2.0 writes format 2; analyser
+0.3.0 reads formats 1 and 2. Format 2 adds `counter_aggregates` and stops summary
+mode from retaining counter samples (see [Format 2 changes](#format-2-changes)).
+Everything else is unchanged from format 1. Encoding: UTF-8 JSON, one complete object.
 See [`fixtures/known-detailed.json`](../fixtures/known-detailed.json). The public
 Rust model and validator are the executable schema. Unknown fields, unsupported
 versions, malformed/truncated JSON and inconsistent data are errors. A stopped
@@ -10,7 +13,7 @@ capture with declared drops/incomplete scopes is valid but carries quality warni
 
 | Key | Meaning |
 |---|---|
-| `format_version` | Integer `1`; incompatible changes require another version |
+| `format_version` | Integer `2` (or `1` for older captures); incompatible changes require another version |
 | `recorder_version` | Bounded nonempty recorder identity/version |
 | `capture_id` | Unique bounded identity; C# uses a random GUID, with no personal path |
 | `mode` | `summary` or `detailed` |
@@ -21,7 +24,8 @@ capture with declared drops/incomplete scopes is valid but carries quality warni
 | `definitions` | Stable metric definitions, indexed by contiguous integer `id` |
 | `aggregates` | Exactly one complete aggregate for every operation definition |
 | `events` | Retained completed durations; empty in summary mode |
-| `counters` | Retained timestamped numeric samples |
+| `counters` | Retained timestamped numeric samples; detailed mode only in format 2 |
+| `counter_aggregates` | Format 2: exactly one complete total for every counter definition |
 | `contexts` | Retained timestamped string observations |
 | `metadata` | At most 32 `{key, value}` pairs; unique keys |
 | `dropped_records` | Records rejected because the retained-record buffer was full |
@@ -70,10 +74,42 @@ intervals are invalid. Events may be stored in completion order. Export sorts by
 start time and then descending duration to put parents first at equal starts.
 Zero-tick events are valid at the resolution of the recorder's clock.
 
+## Format 2 changes
+
+Format 1 summary captures retained every counter sample, so one busy counter could
+fill the record limit within seconds and push out every other counter and context
+observation for the rest of the window. Format 2 keeps a complete total per counter
+instead, whatever the mode or the record limit.
+
+Each `counter_aggregates` entry has `metric`, `samples`, `sum`, `min`, `max` and
+`last`. Every accepted sample enters its counter's total, including samples that
+detailed mode could not retain. A counter with no samples reports all zeros, which
+means unobserved, not a level of zero; the analyser shows those figures as
+unavailable. The validator requires `min <= last <= max`; for a cumulative counter,
+`min >= 0` and `last == max`. A sample that would overflow the sum is rejected and
+counted in `rejected_measurements`.
+
+Read the figures by kind:
+
+- `gauge`: the mean is the mean of samples, not a time-weighted average. It is
+  only as representative as the producer's sampling.
+- `increment`: the sum is the total change; the analyser also reports it per real
+  second of capture.
+- `cumulative`: read `last`.
+
+Summary mode retains no counter samples in format 2; it still retains context.
+Detailed mode retains samples while capacity remains, and with no dropped records
+its retained samples must agree with the totals: the same count and last value,
+and a sum equal within a relative 1e-9.
+
+Format 1 captures carry no totals. The analyser reports their counters from
+retained samples, labelled `retained_samples`, which are partial when records were
+dropped.
+
 ## Completeness and lifecycle
 
-Summary mode retains complete operation aggregates plus bounded counter/context
-samples. It never retains duration events. Detailed mode also retains each
+Summary mode retains complete operation aggregates and counter totals, plus bounded
+context samples (format 1 summary also retained counter samples). It never retains duration events. Detailed mode also retains each
 completed duration while capacity remains. Once capacity is full, further records
 increment `dropped_records`; completed-operation aggregates continue. No sampling
 strategy or statistical representativeness is claimed.

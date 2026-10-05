@@ -15,7 +15,8 @@ measurements from Ostranauts.
 | `comparison/comparison.html` | Deterministic synthetic before/after demonstration |
 | `report/summary.csv` | Complete counts and inclusive timings for completed scopes |
 | `report/time-series.csv` | Sparse per-operation retained-event overlap in time windows |
-| `report/counters.csv` | Retained counter observations with explicit kinds and units |
+| `report/counters.csv` | Retained counter observations with explicit kinds and units (detailed captures) |
+| `report/counter-summary.csv` | One row per counter: samples, sum, mean, minimum, maximum, last value and, for increments, the rate per second |
 | `report/context.csv` | Timestamped context observations |
 | `report/trace.json` | Retained durations, counters and context in Chrome Trace JSON |
 | `report/report.json` | Capture identity, metadata, limits, warnings and statistics |

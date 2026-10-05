@@ -28,6 +28,81 @@ impl ValidatedCapture {
     }
 }
 
+fn is_counter(kind: &Kind) -> bool {
+    matches!(kind, Kind::Gauge | Kind::Cumulative | Kind::Increment)
+}
+
+/// Format 2 counter totals: exactly one per counter, internally consistent, and never smaller than the samples
+/// retained beside them. Format 1 has none, and summary mode in format 2 retains no samples.
+fn counter_totals<'a>(
+    c: &'a Capture,
+    definition: impl Fn(usize) -> Result<&'a Definition, Error>,
+) -> Result<(), Error> {
+    if c.format_version == 1 {
+        return require(
+            c.counter_aggregates.is_empty(),
+            "Format 1 captures carry no counter_aggregates.",
+        );
+    }
+    require(
+        c.mode != Mode::Summary || c.counters.is_empty(),
+        "Format 2 summary captures keep counter totals, not samples.",
+    )?;
+    let mut seen = std::collections::HashSet::new();
+    for a in &c.counter_aggregates {
+        let kind = &definition(a.metric)?.kind;
+        require(
+            is_counter(kind) && seen.insert(a.metric),
+            "Exactly one counter aggregate is required per counter.",
+        )?;
+        require(
+            [a.sum, a.min, a.max, a.last].iter().all(|v| v.is_finite()),
+            "Counter totals must be finite.",
+        )?;
+        if a.samples == 0 {
+            require(
+                a.sum == 0.0 && a.min == 0.0 && a.max == 0.0 && a.last == 0.0,
+                "A counter with no samples reports zeros, not a level.",
+            )?;
+        } else {
+            require(
+                a.min <= a.max && a.min <= a.last && a.last <= a.max,
+                "Counter minimum, maximum and last value disagree.",
+            )?;
+        }
+        if *kind == Kind::Cumulative && a.samples > 0 {
+            require(
+                a.min >= 0.0 && a.last == a.max,
+                "A cumulative counter ends at its largest value.",
+            )?;
+        }
+        let retained: Vec<f64> = c
+            .counters
+            .iter()
+            .filter(|s| s.metric == a.metric)
+            .map(|s| s.value)
+            .collect();
+        require(
+            retained.len() as u64 <= a.samples
+                && retained.iter().all(|v| *v >= a.min && *v <= a.max),
+            "Retained counter samples exceed their complete total.",
+        )?;
+        if c.dropped_records == 0 && c.mode == Mode::Detailed {
+            let sum: f64 = retained.iter().sum();
+            require(
+                retained.len() as u64 == a.samples
+                    && retained.last().is_none_or(|v| *v == a.last)
+                    && (sum - a.sum).abs() <= 1e-9 * a.sum.abs().max(1.0),
+                "Detailed counter samples and totals disagree without dropped records.",
+            )?;
+        }
+    }
+    require(
+        c.definitions.iter().filter(|d| is_counter(&d.kind)).count() == c.counter_aggregates.len(),
+        "Missing counter aggregate.",
+    )
+}
+
 fn require(ok: bool, detail: impl Into<String>) -> Result<(), Error> {
     if ok {
         Ok(())
@@ -41,7 +116,7 @@ fn text(value: &str) -> bool {
 
 pub fn validate(c: Capture) -> Result<ValidatedCapture, Error> {
     require(
-        c.format_version == FORMAT_VERSION,
+        SUPPORTED_FORMAT_VERSIONS.contains(&c.format_version),
         "Unsupported format_version.",
     )?;
     require(
@@ -212,6 +287,7 @@ pub fn validate(c: Capture) -> Result<ValidatedCapture, Error> {
         }
         last_tick = s.tick;
     }
+    counter_totals(&c, definition)?;
     last_tick = 0;
     for s in &c.contexts {
         require(

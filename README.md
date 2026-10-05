@@ -62,7 +62,7 @@ cargo run --release -- compare fixtures/known-detailed.json fixtures/comparison-
 ```
 
 The final argument is the time-window width in milliseconds. Output directories
-must be new. Summary captures export aggregate and counter/context reports only;
+must be new. Summary captures export aggregate, counter-total and context reports only;
 they cannot create a timeline.
 
 ## Implemented

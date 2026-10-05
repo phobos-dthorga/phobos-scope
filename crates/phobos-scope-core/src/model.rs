@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-pub const FORMAT_VERSION: u32 = 1;
+/// The format this analyser writes about and the newest it reads. Format 1 captures remain readable.
+pub const FORMAT_VERSION: u32 = 2;
+pub const SUPPORTED_FORMAT_VERSIONS: [u32; 2] = [1, 2];
 pub const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_DEFINITIONS: usize = 256;
 pub const MAX_RECORDS: usize = 20_000;
@@ -53,6 +55,18 @@ pub struct Aggregate {
     pub incomplete: u64,
 }
 
+/// Format 2: the complete total of one counter, including samples that were never retained.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CounterAggregate {
+    pub metric: usize,
+    pub samples: u64,
+    pub sum: f64,
+    pub min: f64,
+    pub max: f64,
+    pub last: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
@@ -99,6 +113,9 @@ pub struct Capture {
     pub aggregates: Vec<Aggregate>,
     pub events: Vec<Event>,
     pub counters: Vec<Sample>,
+    /// Required from format 2; absent (empty) in format 1.
+    #[serde(default)]
+    pub counter_aggregates: Vec<CounterAggregate>,
     pub contexts: Vec<Context>,
     pub metadata: Vec<Metadata>,
     pub dropped_records: u64,

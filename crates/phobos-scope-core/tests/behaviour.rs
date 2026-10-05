@@ -248,3 +248,85 @@ fn write_failures_are_reported_without_consuming_validated_data() {
     assert!(trace_json(&c, Fails).is_err());
     assert!(summary_csv(&c, Vec::new()).is_ok());
 }
+
+fn format_two() -> Capture {
+    let mut c = fixture();
+    c.format_version = 2;
+    c.counter_aggregates = vec![CounterAggregate {
+        metric: 2,
+        samples: 1,
+        sum: 7.0,
+        min: 7.0,
+        max: 7.0,
+        last: 7.0,
+    }];
+    c
+}
+
+#[test]
+fn format_two_counter_totals_are_complete_and_checked() {
+    let c = validate(format_two()).unwrap();
+    let s = counter_statistics(&c);
+    assert_eq!(s.len(), 1);
+    assert_eq!(s[0].basis, "complete_total");
+    assert_eq!(
+        (s[0].samples, s[0].sum, s[0].last),
+        (1, Some(7.0), Some(7.0))
+    );
+    assert!(s[0].per_second.is_none(), "a gauge has no rate");
+    // Summary mode keeps totals that outnumber the retained samples (there are none).
+    let mut summary = format_two();
+    summary.mode = Mode::Summary;
+    summary.events.clear();
+    summary.counters.clear();
+    summary.counter_aggregates[0].samples = 50_000;
+    summary.counter_aggregates[0].sum = 350_000.0;
+    let summary = validate(summary).unwrap();
+    assert_eq!(counter_statistics(&summary)[0].mean, Some(7.0));
+}
+
+#[test]
+fn format_two_rejects_missing_or_inconsistent_totals() {
+    let mut c = format_two();
+    c.counter_aggregates.clear();
+    assert!(validate(c).is_err(), "every counter needs a total");
+    let mut c = format_two();
+    c.counter_aggregates[0].max = 6.0;
+    assert!(
+        validate(c).is_err(),
+        "a retained sample cannot exceed the maximum"
+    );
+    let mut c = format_two();
+    c.counter_aggregates[0].samples = 2;
+    assert!(
+        validate(c).is_err(),
+        "detailed totals must match samples when nothing was dropped"
+    );
+    let mut c = format_two();
+    c.mode = Mode::Summary;
+    c.events.clear();
+    assert!(
+        validate(c).is_err(),
+        "format 2 summary captures retain no counter samples"
+    );
+    let mut c = format_two();
+    c.counter_aggregates[0].samples = 0;
+    assert!(validate(c).is_err(), "an unsampled total reports zeros");
+    let mut c = fixture();
+    c.counter_aggregates = format_two().counter_aggregates;
+    assert!(validate(c).is_err(), "format 1 has no totals");
+}
+
+#[test]
+fn format_one_counters_report_retained_samples_only() {
+    let c = validate(fixture()).unwrap();
+    let s = counter_statistics(&c);
+    assert_eq!(s[0].basis, "retained_samples");
+    assert_eq!(s[0].samples, 1);
+    assert_eq!(
+        read_capture(br#"{"format_version":3}"#.as_slice())
+            .unwrap_err()
+            .code,
+        "capture.version"
+    );
+}

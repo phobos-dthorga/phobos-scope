@@ -80,3 +80,15 @@ narrow-window screenshots under a fresh ignored `artifacts/html-review-*`
 directory, using separate headless profiles without interacting with an open
 browser session. Screenshot generation is not a substitute for inspecting the
 result. The initial report and comparison layouts were inspected locally in Edge.
+
+## Counter totals and format 2 (recorder 0.2.0, analyser 0.3.0)
+
+C# checks cover summary-mode totals without retained samples or drops, sample
+count/sum/minimum/maximum/last, an unsampled counter, an overflowing sum rejected
+rather than stored as infinity, and a sample dropped by the record cap still counted
+in its total. Rust checks cover complete totals, a summary total far larger than any
+retained population, missing or inconsistent totals, retained samples outside the
+total's range, detailed totals that disagree without drops, format 2 summary samples,
+totals in a format 1 capture, and format 1 counters reported from retained samples.
+The verification script checks that a C# summary total arrives intact in the Rust
+`counter-summary.csv`. Ostranauts in-game behaviour remains unverified.

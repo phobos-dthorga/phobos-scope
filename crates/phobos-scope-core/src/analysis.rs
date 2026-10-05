@@ -17,6 +17,76 @@ pub struct OperationStats {
     pub retained_calls: usize,
 }
 
+/// One counter's totals. Format 2 totals are complete; a format 1 capture only has its retained samples, and says so.
+#[derive(Debug, Clone, Serialize)]
+pub struct CounterStats {
+    pub metric: usize,
+    pub name: String,
+    pub category: String,
+    pub unit: String,
+    pub kind: Kind,
+    pub basis: &'static str,
+    pub samples: u64,
+    pub sum: Option<f64>,
+    pub mean: Option<f64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub last: Option<f64>,
+    /// Increments only: the summed change per real second of capture.
+    pub per_second: Option<f64>,
+}
+
+pub fn counter_statistics(capture: &ValidatedCapture) -> Vec<CounterStats> {
+    let c = &capture.data;
+    let seconds = (c.end_tick > 0).then(|| c.end_tick as f64 / c.clock_frequency_hz as f64);
+    c.definitions
+        .iter()
+        .filter(|d| matches!(d.kind, Kind::Gauge | Kind::Cumulative | Kind::Increment))
+        .map(|d| {
+            let (basis, samples, sum, min, max, last) =
+                match c.counter_aggregates.iter().find(|a| a.metric == d.id) {
+                    Some(a) => ("complete_total", a.samples, a.sum, a.min, a.max, a.last),
+                    None => {
+                        let values: Vec<f64> = c
+                            .counters
+                            .iter()
+                            .filter(|s| s.metric == d.id)
+                            .map(|s| s.value)
+                            .collect();
+                        (
+                            "retained_samples",
+                            values.len() as u64,
+                            values.iter().sum(),
+                            values.iter().copied().fold(f64::INFINITY, f64::min),
+                            values.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+                            values.last().copied().unwrap_or(0.0),
+                        )
+                    }
+                };
+            let any = samples > 0;
+            CounterStats {
+                metric: d.id,
+                name: d.name.clone(),
+                category: d.category.clone(),
+                unit: d.unit.clone(),
+                kind: d.kind.clone(),
+                basis,
+                samples,
+                sum: any.then_some(sum),
+                mean: any.then(|| sum / samples as f64),
+                min: any.then_some(min),
+                max: any.then_some(max),
+                last: any.then_some(last),
+                per_second: (d.kind == Kind::Increment)
+                    .then_some(())
+                    .and(seconds)
+                    .filter(|_| any)
+                    .map(|s| sum / s),
+            }
+        })
+        .collect()
+}
+
 pub fn milliseconds(ticks: u64, hz: u64) -> f64 {
     ticks as f64 * 1_000.0 / hz as f64
 }

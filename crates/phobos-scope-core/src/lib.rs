@@ -55,10 +55,13 @@ pub fn read_capture(reader: impl Read) -> Result<ValidatedCapture, Error> {
     }
     let version: Version = serde_json::from_slice(&bytes)
         .map_err(|e| Error::new("capture.json", format!("Invalid or truncated JSON: {e}")))?;
-    if version.format_version != Some(FORMAT_VERSION) {
+    if !version
+        .format_version
+        .is_some_and(|v| SUPPORTED_FORMAT_VERSIONS.contains(&v))
+    {
         return Err(Error::new(
             "capture.version",
-            "Expected format_version 1; use a compatible analyser.",
+            "Expected format_version 1 or 2; use a compatible analyser.",
         ));
     }
     // Deserialize the original bytes so duplicate object keys remain an error.

@@ -78,6 +78,7 @@ fn analyse(
         summary_csv(c, File::create(staging.join("summary.csv"))?)?;
         report_html(c, File::create(staging.join("report.html"))?)?;
         counters_csv(c, File::create(staging.join("counters.csv"))?)?;
+        counter_summary_csv(c, File::create(staging.join("counter-summary.csv"))?)?;
         contexts_csv(c, File::create(staging.join("context.csv"))?)?;
         if c.data().mode == Mode::Detailed {
             windows_csv(
@@ -94,7 +95,7 @@ fn analyse(
             "clock_frequency_hz":c.data().clock_frequency_hz, "limits":c.data().limits,
             "warnings":c.warnings(), "dropped_records":c.data().dropped_records,
             "rejected_measurements":c.data().rejected_measurements,
-            "statistics":statistics(c), "window_ms":window_ms,
+            "statistics":statistics(c), "counters":counter_statistics(c), "window_ms":window_ms,
             "semantics":"Inclusive elapsed time. Nested totals overlap. Empty cells are unavailable. Time-series rows use retained events only; omitted rows are not evidence of no work."
         });
         serde_json::to_writer_pretty(File::create(staging.join("report.json"))?, &manifest)?;

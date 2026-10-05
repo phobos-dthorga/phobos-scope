@@ -118,6 +118,49 @@ pub fn counters_csv(capture: &ValidatedCapture, writer: impl Write) -> Result<()
     w.flush().map_err(csv_error)
 }
 
+pub fn counter_summary_csv(capture: &ValidatedCapture, writer: impl Write) -> Result<(), Error> {
+    let mut w = csv::Writer::from_writer(writer);
+    w.write_record([
+        "name",
+        "category",
+        "kind",
+        "unit",
+        "basis",
+        "samples",
+        "sum",
+        "mean",
+        "min",
+        "max",
+        "last",
+        "per_second",
+    ])
+    .map_err(csv_error)?;
+    let text = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
+    for s in counter_statistics(capture) {
+        let kind = match s.kind {
+            Kind::Gauge => "gauge",
+            Kind::Cumulative => "cumulative",
+            _ => "increment",
+        };
+        w.write_record([
+            cell(&s.name),
+            cell(&s.category),
+            kind.to_owned(),
+            cell(&s.unit),
+            s.basis.to_owned(),
+            s.samples.to_string(),
+            text(s.sum),
+            text(s.mean),
+            text(s.min),
+            text(s.max),
+            text(s.last),
+            text(s.per_second),
+        ])
+        .map_err(csv_error)?;
+    }
+    w.flush().map_err(csv_error)
+}
+
 pub fn contexts_csv(capture: &ValidatedCapture, writer: impl Write) -> Result<(), Error> {
     let mut w = csv::Writer::from_writer(writer);
     w.write_record(["time_ms", "name", "value", "dropped_records"])

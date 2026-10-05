@@ -124,7 +124,21 @@ pub fn report_html(capture: &ValidatedCapture, writer: impl Write) -> Result<(),
         };
         write!(html,"<tr><td>{}<small>{}</small><div class=\"bar\" style=\"width:{width:.3}%\"></div></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",escape(&s.name),escape(&s.category),s.calls,number(s.calls_per_second),number(Some(s.total_ms)),number(s.mean_ms),number(s.max_ms),s.incomplete,s.retained_calls).unwrap();
     }
-    html.push_str("</tbody></table></div><h2>Retained timeline</h2>");
+    html.push_str("</tbody></table></div><h2>Counters</h2><p>Gauges are levels: the mean is the mean of samples, not a time-weighted average. Increments are changes: the sum is the total change. Cumulative counters are running totals: read the last value.</p>");
+    let counters = counter_statistics(capture);
+    if counters.is_empty() {
+        html.push_str("<p>No counters defined.</p>");
+    } else {
+        if counters.iter().any(|s| s.basis == "retained_samples") {
+            html.push_str("<p>This format 1 capture has no counter totals: figures use retained samples only and are partial when records were dropped.</p>");
+        }
+        html.push_str("<div class=\"scroll\"><table><thead><tr><th>Counter / category</th><th>Kind</th><th>Samples</th><th>Sum</th><th>Mean</th><th>Min</th><th>Max</th><th>Last</th><th>Per second</th><th>Unit</th></tr></thead><tbody>");
+        for s in counters {
+            write!(html,"<tr><td>{}<small>{}</small></td><td>{:?}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",escape(&s.name),escape(&s.category),s.kind,s.samples,number(s.sum),number(s.mean),number(s.min),number(s.max),number(s.last),number(s.per_second),escape(&s.unit)).unwrap();
+        }
+        html.push_str("</tbody></table></div>");
+    }
+    html.push_str("<h2>Retained timeline</h2>");
     if c.mode == Mode::Summary {
         html.push_str("<p>Unavailable: summary mode does not record duration events. No timeline is inferred from aggregates.</p>");
     } else if c.events.is_empty() {

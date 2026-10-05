@@ -15,6 +15,8 @@ JsonElement Data(CaptureSnapshot capture)
 }
 long Field(JsonElement data, string name) => data.GetProperty(name).GetInt64();
 JsonElement Aggregate(JsonElement data, int index = 0) => data.GetProperty("aggregates")[index];
+JsonElement Total(JsonElement data, int metric) => data.GetProperty("counter_aggregates").EnumerateArray().Single(a => a.GetProperty("metric").GetInt32() == metric);
+double Number(JsonElement data, string name) => data.GetProperty(name).GetDouble();
 void Save(string name, CaptureSnapshot capture)
 {
     if (args.Length > 0) capture.Export(Path.Combine(args[0], name + ".json"));
@@ -54,12 +56,33 @@ snapshot = r.Stop()!; data = Data(snapshot);
 Check(data.GetProperty("events").GetArrayLength() == 0 && Field(Aggregate(data), "total_ticks") == 4, "Summary mode retains aggregates without events");
 Save("known-summary", snapshot);
 
+// Format 2: summary mode keeps one complete total per counter and no samples, so a busy counter can never fill the
+// record limit and push out the rest of the capture.
+r.Start(new CaptureOptions { Mode = CaptureMode.Summary, MaxRecords = 2 });
+for (var i = 1; i <= 50; i++) { r.Sample(counter, i % 10); clock++; }
+r.Context(context, "1x");
+snapshot = r.Stop()!; data = Data(snapshot); var total = Total(data, 2);
+Check(Field(data, "format_version") == 2 && data.GetProperty("counters").GetArrayLength() == 0 && snapshot.DroppedRecords == 0,
+    "Summary counters keep totals without retaining samples or dropping records");
+Check(Field(total, "samples") == 50 && Number(total, "sum") == 225 && Number(total, "min") == 0 && Number(total, "max") == 9 && Number(total, "last") == 0,
+    "A counter total holds its sample count, sum, minimum, maximum and last value");
+Check(Field(Total(data, 2), "samples") == 50 && data.GetProperty("contexts").GetArrayLength() == 1, "Context is still retained in summary mode");
+Save("summary-counters", snapshot);
+r.Start(new CaptureOptions { Mode = CaptureMode.Summary });
+snapshot = r.Stop()!; total = Total(Data(snapshot), 2);
+Check(Field(total, "samples") == 0 && Number(total, "sum") == 0 && Number(total, "max") == 0, "An unsampled counter reports zero samples, not a level");
+r.Start(new CaptureOptions { Mode = CaptureMode.Summary });
+r.Sample(counter, double.MaxValue); r.Sample(counter, double.MaxValue);
+snapshot = r.Stop()!; total = Total(Data(snapshot), 2);
+Check(snapshot.RejectedMeasurements == 1 && Field(total, "samples") == 1, "A sample that would overflow the total is rejected, never stored as infinity");
+
 r.Start(new CaptureOptions { MaxRecords = 1 });
 using (r.Measure(outer)) clock += 2;
 using (r.Measure(outer)) clock += 3;
 r.Sample(counter, 2);
 snapshot = r.Stop()!; data = Data(snapshot);
 Check(snapshot.DroppedRecords == 2 && Field(Aggregate(data), "calls") == 2 && Field(Aggregate(data), "total_ticks") == 5, "Record cap preserves complete timing aggregates and counts lost records");
+Check(Field(Total(data, 2), "samples") == 1 && Number(Total(data, 2), "last") == 2, "Record cap keeps a dropped sample in its counter total");
 Save("dropped", snapshot);
 
 r.Start(); var abandoned = r.Measure(outer); clock += 5; snapshot = r.Stop(StopReason.WorldChange)!;

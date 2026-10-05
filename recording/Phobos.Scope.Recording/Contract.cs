@@ -29,6 +29,17 @@ internal sealed class Aggregate
     [DataMember(Name = "max_ticks")] public long MaxTicks;
     [DataMember(Name = "incomplete")] public long Incomplete;
 }
+// Format 2: one complete total per counter, kept whatever the mode or the record limit.
+[DataContract]
+internal sealed class CounterAggregate
+{
+    [DataMember(Name = "metric")] public int Metric;
+    [DataMember(Name = "samples")] public long Samples;
+    [DataMember(Name = "sum")] public double Sum;
+    [DataMember(Name = "min")] public double Min;
+    [DataMember(Name = "max")] public double Max;
+    [DataMember(Name = "last")] public double Last;
+}
 [DataContract]
 internal sealed class DurationEvent
 {
@@ -59,7 +70,7 @@ internal sealed class Metadata
 [DataContract]
 internal sealed class CaptureData
 {
-    [DataMember(Name = "format_version")] public int FormatVersion = 1;
+    [DataMember(Name = "format_version")] public int FormatVersion = 2;
     [DataMember(Name = "recorder_version")] public string RecorderVersion = "Phobos.Scope.Recording/" + Recorder.Version;
     [DataMember(Name = "capture_id")] public string CaptureId = "";
     [DataMember(Name = "mode")] public string Mode = "";
@@ -71,6 +82,7 @@ internal sealed class CaptureData
     [DataMember(Name = "aggregates")] public List<Aggregate> Aggregates = new();
     [DataMember(Name = "events")] public List<DurationEvent> Events = new();
     [DataMember(Name = "counters")] public List<CounterSample> Counters = new();
+    [DataMember(Name = "counter_aggregates")] public List<CounterAggregate> CounterAggregates = new();
     [DataMember(Name = "contexts")] public List<ContextSample> Contexts = new();
     [DataMember(Name = "metadata")] public List<Metadata> Metadata = new();
     [DataMember(Name = "dropped_records")] public long DroppedRecords;

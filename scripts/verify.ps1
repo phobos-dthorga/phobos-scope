@@ -39,6 +39,10 @@ try {
     if ($dropped.dropped_records -ne 2 -or $dropped.statistics[0].total_ms -ne 5 -or $dropped.statistics[0].retained_calls -ne 1) {
         throw 'Dropped records corrupted complete aggregates.'
     }
+    $totals = Import-Csv -LiteralPath (Join-Path $output 'reports/summary-counters/counter-summary.csv')
+    if ($totals.samples -ne '50' -or $totals.sum -ne '225' -or $totals.basis -ne 'complete_total') {
+        throw 'Format 2 summary counter totals did not survive the C# to Rust round trip.'
+    }
     $escaped = Import-Csv -LiteralPath (Join-Path $output 'reports/escaped/summary.csv')
     if ($escaped.name -ne "'=formula,`"quoted`"`nline") { throw 'CSV escaping/formula neutralisation failed.' }
     $sample = Get-Content -LiteralPath (Join-Path $output 'sample-report/report.json') -Raw | ConvertFrom-Json

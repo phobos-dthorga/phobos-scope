@@ -39,7 +39,7 @@ public readonly struct TimingScope : IDisposable
 /// <summary>Opt-in synchronous recorder. Setup/lifecycle belong to its creating thread.</summary>
 public sealed class Recorder
 {
-    public const string Version = "0.1.1";
+    public const string Version = "0.2.0";
     public const int MaxDefinitions = 256;
     public const int MaxTextBytes = 512;
     public const int MaxRecordLimit = 20_000;
@@ -58,6 +58,7 @@ public sealed class Recorder
     private long rejected;
     private CaptureData? active;
     private Aggregate?[] aggregates = Array.Empty<Aggregate?>();
+    private CounterAggregate?[] counterAggregates = Array.Empty<CounterAggregate?>();
     private double?[] cumulative = Array.Empty<double?>();
     private ActiveScope[] stack = Array.Empty<ActiveScope>();
     private int depth;
@@ -126,8 +127,12 @@ public sealed class Recorder
             }
         }
         aggregates = new Aggregate?[definitions.Count]; cumulative = new double?[definitions.Count];
-        foreach (var d in definitions) if (d.Kind == "operation")
-        { var a = new Aggregate { Metric = d.Id }; aggregates[d.Id] = a; data.Aggregates.Add(a); }
+        counterAggregates = new CounterAggregate?[definitions.Count];
+        foreach (var d in definitions)
+        {
+            if (d.Kind == "operation") { var a = new Aggregate { Metric = d.Id }; aggregates[d.Id] = a; data.Aggregates.Add(a); }
+            else if (d.Kind != "context") { var a = new CounterAggregate { Metric = d.Id }; counterAggregates[d.Id] = a; data.CounterAggregates.Add(a); }
+        }
         stack = new ActiveScope[options.MaxDepth]; depth = records = 0;
         Interlocked.Exchange(ref rejected, 0); lastTick = 0;
         start = timestamp(); active = data; generation++; enabled = true;
@@ -203,9 +208,17 @@ public sealed class Recorder
         if (kind == "cumulative")
         {
             if (value < 0 || (cumulative[counter.Id].HasValue && value < cumulative[counter.Id]!.Value)) { Interlocked.Increment(ref rejected); return; }
-            cumulative[counter.Id] = value;
         }
-        if (Retain()) active!.Counters.Add(new CounterSample { Metric = counter.Id, Tick = tick, Value = value });
+        // Every accepted sample enters its counter's total, so totals stay complete when samples are not retained.
+        var total = counterAggregates[counter.Id]!;
+        var sum = total.Sum + value;
+        if (double.IsInfinity(sum)) { Interlocked.Increment(ref rejected); return; }
+        if (kind == "cumulative") cumulative[counter.Id] = value;
+        total.Min = total.Samples == 0 ? value : Math.Min(total.Min, value);
+        total.Max = total.Samples == 0 ? value : Math.Max(total.Max, value);
+        total.Samples++; total.Sum = sum; total.Last = value;
+        // Summary mode keeps totals only; detailed mode also retains each sample while capacity remains.
+        if (active!.Mode == "detailed" && Retain()) active.Counters.Add(new CounterSample { Metric = counter.Id, Tick = tick, Value = value });
     }
 
     public void Context(Metric context, string value)
